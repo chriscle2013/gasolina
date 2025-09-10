@@ -59,6 +59,7 @@ def finalizar_recorrido():
         
         st.session_state.iniciando_recorrido = False
         st.session_state.km_inicial_sesion = None
+        st.rerun() # <-- ¡Añadido!
     else:
         st.warning("⚠️ El kilometraje final debe ser mayor que el inicial.")
 
@@ -103,6 +104,7 @@ def registrar_repostaje():
     df_repostajes = pd.concat([df_repostajes, nuevo_repostaje], ignore_index=True)
     df_repostajes.to_csv("data/repostajes.csv", index=False)
     st.success("✅ Repostaje registrado con éxito. El consumo se calculará en el próximo llenado.")
+    st.rerun() # <-- ¡Añadido!
 
 # Función para registrar el kilometraje
 def registrar_kilometraje():
@@ -121,6 +123,7 @@ def registrar_kilometraje():
     df_kilometraje = pd.concat([df_kilometraje, nuevo_registro_km], ignore_index=True)
     df_kilometraje.to_csv("data/kilometraje.csv", index=False)
     st.success("✅ Registro de kilometraje guardado con éxito.")
+    st.rerun() # <-- ¡Añadido!
 
 # -----------------
 # INTERFAZ DE USUARIO
@@ -188,11 +191,4 @@ try:
     st.dataframe(df_recorridos)
 
     st.subheader("📋 Historial de Kilometraje y Kilometraje Restante")
-    df_kilometraje = pd.read_csv("data/kilometraje.csv")
-    st.dataframe(df_kilometraje)
-    
-    st.subheader("📈 Kilometraje Restante en el Tablero")
-    st.line_chart(df_kilometraje, x="fecha", y="km_restante_tablero")
-
-except FileNotFoundError:
-    st.info("No hay registros guardados. ¡Empieza a añadir tus primeros recorridos y repostajes!")
+    df_kilometraje = pd.read_csv("data
