@@ -203,4 +203,12 @@ try:
                         aire_acondicionado_e, km_recorridos_e, consumo_km_gal_e, costo_por_km_e, km_restante_e
                     ]
                     
-                    df_registros.to_csv("registros
+                    df_registros.to_csv("registros_combustible.csv", index=False)
+                    st.success("✅ ¡Registro actualizado con éxito!")
+                    st.session_state.editing = False
+                    st.rerun()
+                else:
+                    st.warning("⚠️ El kilometraje final debe ser mayor que el inicial para guardar.")
+
+except FileNotFoundError:
+    st.info("No hay registros para editar. ¡Añade uno primero!")
