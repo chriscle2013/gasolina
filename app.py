@@ -14,13 +14,16 @@ km_inicial = st.number_input("🚗 Kilometraje inicial (km):", min_value=0, step
 km_final = st.number_input("🏁 Kilometraje final (km):", min_value=0, step=1)
 galones = st.number_input("💧 Cantidad de combustible (galones):", min_value=0.01)
 precio = st.number_input("💰 Precio total del repostaje ($ COP):", min_value=0.01)
+# Nuevo campo de checkbox para el aire acondicionado
+aire_acondicionado = st.checkbox("❄️ ¿Se usó el aire acondicionado?")
 
 # Botón para añadir los datos
 if st.button("➕ Añadir Registro"):
     try:
         df_registros = pd.read_csv("registros_combustible.csv")
     except FileNotFoundError:
-        df_registros = pd.DataFrame(columns=["fecha", "km_inicial", "km_final", "galones", "precio", "km_recorridos", "consumo_km_gal", "costo_por_km"])
+        # Añadimos la columna 'aire_acondicionado' al DataFrame vacío
+        df_registros = pd.DataFrame(columns=["fecha", "km_inicial", "km_final", "galones", "precio", "aire_acondicionado", "km_recorridos", "consumo_km_gal", "costo_por_km"])
 
     # Validar que los datos sean correctos y coherentes
     if km_final > km_inicial and galones > 0 and precio > 0:
@@ -38,6 +41,7 @@ if st.button("➕ Añadir Registro"):
             "km_final": km_final,
             "galones": galones,
             "precio": precio,
+            "aire_acondicionado": aire_acondicionado,
             "km_recorridos": km_recorridos,
             "consumo_km_gal": consumo_km_gal,
             "costo_por_km": costo_por_km
@@ -81,6 +85,25 @@ try:
         
         st.metric(label="Consumo Promedio (km/galón)", value=f"{promedio_consumo:.2f}")
         st.metric(label="Costo Promedio por Kilómetro", value=f"${promedio_costo:,.2f} COP")
+
+        # Análisis con y sin aire acondicionado
+        st.subheader("Análisis comparativo (con/sin aire acondicionado)")
+        
+        # Filtrar datos con aire acondicionado
+        df_con_ac = df_registros[df_registros["aire_acondicionado"] == True]
+        if not df_con_ac.empty:
+            consumo_con_ac = df_con_ac["consumo_km_gal"].mean()
+            st.metric("Consumo Promedio (con A/C)", value=f"{consumo_con_ac:.2f} km/galón")
+        else:
+            st.info("No hay registros con aire acondicionado para analizar.")
+
+        # Filtrar datos sin aire acondicionado
+        df_sin_ac = df_registros[df_registros["aire_acondicionado"] == False]
+        if not df_sin_ac.empty:
+            consumo_sin_ac = df_sin_ac["consumo_km_gal"].mean()
+            st.metric("Consumo Promedio (sin A/C)", value=f"{consumo_sin_ac:.2f} km/galón")
+        else:
+            st.info("No hay registros sin aire acondicionado para analizar.")
 
 except FileNotFoundError:
     st.info("No hay registros guardados. ¡Empieza a añadir tu primer recorrido!")
