@@ -2,19 +2,17 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-# Constantes del vehículo
-CAPACIDAD_TANQUE_GALONES = 13.2  # Capacidad del tanque del Kia Seltos 2021 en galones
-
 # Título de la aplicación y descripción
 st.title("⛽ Control de Gasto de Combustible (Kia Seltos 2021)")
-st.write("Registra el kilometraje restante para calcular el consumo y el costo por kilómetro.")
+st.write("Registra tus recorridos y repostajes para calcular el consumo (km/galón) y el costo ($/km).")
 
 # Sección de entrada de datos
 st.header("📝 Ingreso de Datos")
 
-# Widgets para la entrada de datos
+# Widgets para la entrada de datos básicos
 fecha = st.date_input("📅 Fecha del registro:")
-km_actual = st.number_input("🚗 Kilometraje actual (km):", min_value=0, step=1)
+km_inicial = st.number_input("🚗 Kilometraje inicial (km):", min_value=0, step=1)
+km_final = st.number_input("🏁 Kilometraje final (km):", min_value=0, step=1)
 aire_acondicionado = st.checkbox("❄️ ¿Se usó el aire acondicionado?")
 
 # Nuevo campo de checkbox para el repostaje
@@ -22,70 +20,54 @@ es_repostaje = st.checkbox("⛽ ¿Este registro incluye un repostaje?")
 
 # Mostrar campos de combustible solo si se marca la casilla de "Repostaje"
 if es_repostaje:
-    km_restante = st.number_input("🎯 Kilometraje restante al llenar el tanque (km):", min_value=0, step=1)
-    precio_total = st.number_input("💰 Precio total del repostaje ($ COP):", min_value=0.01)
+    galones = st.number_input("💧 Cantidad de combustible (galones):", min_value=0.01)
+    precio = st.number_input("💰 Precio total del repostaje ($ COP):", min_value=0.01)
+    # Campo opcional para el kilometraje restante
+    km_restante = st.number_input("🎯 Kilometraje restante en el tablero (km):", min_value=0, step=1)
 else:
+    galones = 0.0
+    precio = 0.0
     km_restante = 0
-    precio_total = 0.0
 
 # Botón para añadir los datos
 if st.button("➕ Añadir Registro"):
     try:
         df_registros = pd.read_csv("registros_combustible.csv")
     except FileNotFoundError:
-        df_registros = pd.DataFrame(columns=["fecha", "km_actual", "km_recorridos_ultimo", "consumo_km_gal", "costo_por_km", "es_repostaje", "aire_acondicionado"])
+        df_registros = pd.DataFrame(columns=["fecha", "km_inicial", "km_final", "galones", "precio", "es_repostaje", "aire_acondicionado", "km_recorridos", "consumo_km_gal", "costo_por_km", "km_restante"])
 
-    # Calcular los kilómetros recorridos desde el último registro
-    km_recorridos_ultimo = 0
-    if not df_registros.empty:
-        ultimo_km = df_registros["km_actual"].iloc[-1]
-        km_recorridos_ultimo = km_actual - ultimo_km
-    
     # Validar que los datos sean coherentes
-    if km_recorridos_ultimo >= 0:
+    if km_final > km_inicial:
+        km_recorridos = km_final - km_inicial
         
         # Calcular consumo y costo solo si es un repostaje
-        if es_repostaje and precio_total > 0 and km_restante > 0:
-            # Consumo promedio histórico para estimar galones
-            consumo_promedio = df_registros["consumo_km_gal"].mean() if "consumo_km_gal" in df_registros.columns else 0
-            
-            # Estimamos los galones consumidos desde el último llenado completo
-            galones_consumidos = 0
-            if not np.isnan(consumo_promedio) and consumo_promedio > 0:
-                # El kilometraje restante es el resultado de la capacidad del tanque por el consumo
-                galones_consumidos = (CAPACIDAD_TANQUE_GALONES * consumo_promedio - km_restante) / consumo_promedio
-            
-            # Si no hay historial, se puede estimar con un valor por defecto o esperar más registros
-            if galones_consumidos <= 0:
-                 st.warning("No hay suficiente historial para calcular los galones consumidos. Por favor, añade más registros de repostaje.")
-                 st.stop() # Detiene la ejecución para no agregar un registro sin datos
-            
-            # Recalculamos el consumo y el costo con los galones estimados
-            consumo_km_gal = km_recorridos_ultimo / galones_consumidos
-            costo_por_km = precio_total / km_recorridos_ultimo
-            
-            st.success("✅ Registro de repostaje añadido con éxito.")
+        if es_repostaje and galones > 0 and precio > 0:
+            consumo_km_gal = km_recorridos / galones
+            costo_por_km = precio / km_recorridos
         else:
-            consumo_km_gal = np.nan
+            consumo_km_gal = np.nan  # Usamos NaN para indicar que no hay datos de combustible
             costo_por_km = np.nan
-            st.success("✅ Registro de recorrido añadido con éxito. No se calculó el consumo.")
-
+        
         # Crear un nuevo registro
         nuevo_registro = pd.DataFrame([{
             "fecha": fecha,
-            "km_actual": km_actual,
-            "km_recorridos_ultimo": km_recorridos_ultimo,
+            "km_inicial": km_inicial,
+            "km_final": km_final,
+            "galones": galones,
+            "precio": precio,
+            "es_repostaje": es_repostaje,
+            "aire_acondicionado": aire_acondicionado,
+            "km_recorridos": km_recorridos,
             "consumo_km_gal": consumo_km_gal,
             "costo_por_km": costo_por_km,
-            "es_repostaje": es_repostaje,
-            "aire_acondicionado": aire_acondicionado
+            "km_restante": km_restante
         }])
         
         df_registros = pd.concat([df_registros, nuevo_registro], ignore_index=True)
         df_registros.to_csv("registros_combustible.csv", index=False)
-        
+        st.success("✅ Registro añadido con éxito.")
     else:
-        st.warning("⚠️ El kilometraje actual debe ser mayor o igual al último kilometraje registrado.")
+        st.warning("⚠️ El kilometraje final debe ser mayor que el inicial.")
 
 # ---
 
