@@ -26,6 +26,8 @@ with st.form("recorrido_form", clear_on_submit=True):
     km_inicial_recorrido = st.number_input("🚗 Kilometraje inicial (km):", min_value=0, step=1)
     km_final_recorrido = st.number_input("🏁 Kilometraje final (km):", min_value=0, step=1)
     aire_acondicionado = st.checkbox("❄️ ¿Se usó el aire acondicionado?")
+    st.image("https://raw.githubusercontent.com/johannasoto/Fuel-Consumption-App/main/Captura%20de%20pantalla%202025-09-10%20a%20la(s)%206.23.02%20p.%20m..png", width=300)
+    km_restante = st.number_input("🎯 Kilometraje restante en el tablero (km):", min_value=0, step=1)
 
     submitted_recorrido = st.form_submit_button("➕ Añadir Recorrido")
 
@@ -35,7 +37,7 @@ with st.form("recorrido_form", clear_on_submit=True):
             try:
                 df_recorridos = pd.read_csv("data/recorridos.csv")
             except FileNotFoundError:
-                df_recorridos = pd.DataFrame(columns=["fecha", "km_inicial", "km_final", "km_recorridos", "aire_acondicionado"])
+                df_recorridos = pd.DataFrame(columns=["fecha", "km_inicial", "km_final", "km_recorridos", "aire_acondicionado", "km_restante"])
             
             km_recorridos = km_final_recorrido - km_inicial_recorrido
             nuevo_recorrido = pd.DataFrame([{
@@ -43,7 +45,8 @@ with st.form("recorrido_form", clear_on_submit=True):
                 "km_inicial": km_inicial_recorrido,
                 "km_final": km_final_recorrido,
                 "km_recorridos": km_recorridos,
-                "aire_acondicionado": aire_acondicionado
+                "aire_acondicionado": aire_acondicionado,
+                "km_restante": km_restante
             }])
             df_recorridos = pd.concat([df_recorridos, nuevo_recorrido], ignore_index=True)
             df_recorridos.to_csv("data/recorridos.csv", index=False)
@@ -65,7 +68,6 @@ with st.form("repostaje_form", clear_on_submit=True):
     km_actual_repostaje = st.number_input("🚗 Kilometraje actual:", min_value=0, step=1)
     galones_repostaje = st.number_input("💧 Cantidad de combustible (galones):", min_value=0.01)
     precio_repostaje = st.number_input("💰 Precio total del repostaje ($ COP):", min_value=0.01)
-    km_restante = st.number_input("🎯 Kilometraje restante en el tablero (km):", min_value=0, step=1)
 
     submitted_repostaje = st.form_submit_button("➕ Añadir Repostaje")
     
@@ -77,7 +79,7 @@ with st.form("repostaje_form", clear_on_submit=True):
             try:
                 df_repostajes = pd.read_csv("data/repostajes.csv")
             except FileNotFoundError:
-                df_repostajes = pd.DataFrame(columns=["fecha", "km_actual", "galones", "precio", "km_recorridos_acum", "consumo_km_gal", "costo_por_km", "km_restante_tablero"])
+                df_repostajes = pd.DataFrame(columns=["fecha", "km_actual", "galones", "precio", "km_recorridos_acum", "consumo_km_gal", "costo_por_km"])
             
             km_recorridos_acum = np.nan
             consumo_km_gal = np.nan
@@ -98,8 +100,7 @@ with st.form("repostaje_form", clear_on_submit=True):
                 "precio": precio_repostaje,
                 "km_recorridos_acum": km_recorridos_acum,
                 "consumo_km_gal": consumo_km_gal,
-                "costo_por_km": costo_por_km,
-                "km_restante_tablero": km_restante
+                "costo_por_km": costo_por_km
             }])
             
             df_repostajes = pd.concat([df_repostajes, nuevo_repostaje], ignore_index=True)
@@ -142,10 +143,9 @@ try:
         with col2:
             st.metric(label="Costo Promedio por Kilómetro", value=f"${promedio_costo:,.2f} COP")
 
-        if "km_restante_tablero" in df_repostajes.columns:
-            st.subheader("🎯 Último Kilometraje Restante en Tablero")
-            st.metric(label="Kilometraje restante estimado", value=f"{df_repostajes['km_restante_tablero'].iloc[-1]} km")
-
+        st.subheader("🎯 Último Kilometraje Restante en Tablero")
+        if not df_recorridos.empty and "km_restante" in df_recorridos.columns:
+            st.metric(label="Kilometraje restante estimado", value=f"{df_recorridos['km_restante'].iloc[-1]} km")
     else:
         st.info("No hay suficientes registros de repostaje para mostrar el análisis. ¡Agrega al menos dos registros para ver las gráficas!")
 except FileNotFoundError:
@@ -169,7 +169,7 @@ try:
     ], ignore_index=True)
     df_registros_combinados = df_registros_combinados.sort_values(by="fecha", ascending=False).reset_index(drop=True)
     
-    opciones_edicion = [f"Tipo: {row['tipo']} | Fecha: {row['fecha']} | Km: {row['km_inicial']}-{row['km_final']}" for i, row in df_registros_combinados.iterrows()]
+    opciones_edicion = [f"Tipo: {row['tipo']} | Fecha: {row['fecha']} | Km: {row.get('km_inicial', 'N/A')}-{row.get('km_final', 'N/A')}" for i, row in df_registros_combinados.iterrows()]
     registro_a_editar_indice = st.selectbox("Selecciona el registro a editar:", range(len(opciones_edicion)), format_func=lambda i: opciones_edicion[i])
     
     if st.button("📝 Cargar para editar"):
@@ -185,49 +185,33 @@ try:
             st.markdown(f"**Editando registro de tipo:** **{registro_actual['tipo']}**")
             
             fecha_e = st.date_input("📅 Fecha", value=pd.to_datetime(registro_actual["fecha"]), key="fecha_e")
-            km_inicial_e = st.number_input("🚗 Kilometraje inicial (km)", value=int(registro_actual["km_inicial"]), min_value=0, step=1, key="km_inicial_e")
-            km_final_e = st.number_input("🏁 Kilometraje final (km)", value=int(registro_actual["km_final"]), min_value=0, step=1, key="km_final_e")
-            aire_acondicionado_e = st.checkbox("❄️ ¿Se usó el aire acondicionado?", value=bool(registro_actual["aire_acondicionado"]), key="aire_acondicionado_e")
             
-            es_repostaje_e = st.checkbox("⛽ ¿Es un repostaje?", value=(registro_actual["tipo"] == 'Repostaje'), key="es_repostaje_e")
-            
-            galones_e = np.nan
-            precio_e = np.nan
-            km_restante_e = np.nan
+            km_inicial_e = st.number_input("🚗 Kilometraje inicial (km)", value=int(registro_actual.get("km_inicial", 0)) if not pd.isna(registro_actual.get("km_inicial", np.nan)) else 0, min_value=0, step=1, key="km_inicial_e")
+            km_final_e = st.number_input("🏁 Kilometraje final (km)", value=int(registro_actual.get("km_final", 0)) if not pd.isna(registro_actual.get("km_final", np.nan)) else 0, min_value=0, step=1, key="km_final_e")
+            aire_acondicionado_e = st.checkbox("❄️ ¿Se usó el aire acondicionado?", value=bool(registro_actual.get("aire_acondicionado", False)) if not pd.isna(registro_actual.get("aire_acondicionado", np.nan)) else False, key="aire_acondicionado_e")
 
-            if es_repostaje_e:
+            if registro_actual['tipo'] == 'Recorrido':
+                km_restante_e = st.number_input("🎯 Kilometraje restante en el tablero (km)", value=int(registro_actual.get("km_restante", 0)) if not pd.isna(registro_actual.get("km_restante", np.nan)) else 0, min_value=0, step=1, key="km_restante_e")
+
+            elif registro_actual['tipo'] == 'Repostaje':
                 galones_e = st.number_input("💧 Cantidad de combustible (galones)", value=float(registro_actual.get("galones", 0.01)), min_value=0.01, key="galones_e")
                 precio_e = st.number_input("💰 Precio total del repostaje ($ COP)", value=float(registro_actual.get("precio", 0.01)), min_value=0.01, key="precio_e")
-                km_restante_e = st.number_input("🎯 Kilometraje restante en el tablero (km)", value=int(registro_actual.get("km_restante_tablero", 0)), min_value=0, step=1, key="km_restante_e")
-
+            
             if st.form_submit_button("💾 Guardar Cambios"):
                 if km_final_e > km_inicial_e:
                     km_recorridos_e = km_final_e - km_inicial_e
                     
-                    if not es_repostaje_e: # Si ya no es repostaje o siempre fue un recorrido
+                    if registro_actual['tipo'] == 'Recorrido':
                         df_recorridos.loc[df_recorridos.index[df_recorridos['fecha'] == registro_actual['fecha']][0], [
-                            "fecha", "km_inicial", "km_final", "km_recorridos", "aire_acondicionado"
+                            "fecha", "km_inicial", "km_final", "km_recorridos", "aire_acondicionado", "km_restante"
                         ]] = [
-                            fecha_e, km_inicial_e, km_final_e, km_recorridos_e, aire_acondicionado_e
+                            fecha_e, km_inicial_e, km_final_e, km_recorridos_e, aire_acondicionado_e, km_restante_e
                         ]
-                        # Si antes era un repostaje, lo eliminamos de esa tabla
-                        if registro_actual['tipo'] == 'Repostaje':
-                            df_repostajes = df_repostajes[df_repostajes['fecha'] != registro_actual['fecha']]
-                            df_repostajes.to_csv("data/repostajes.csv", index=False)
-
-                    else: # Si ahora es un repostaje o siempre fue un repostaje
-                        # Actualizar o añadir en la tabla de recorridos
-                        if registro_actual['tipo'] == 'Recorrido':
-                            df_recorridos.loc[df_recorridos.index[df_recorridos['fecha'] == registro_actual['fecha']][0], [
-                                "fecha", "km_inicial", "km_final", "km_recorridos", "aire_acondicionado"
-                            ]] = [
-                                fecha_e, km_inicial_e, km_final_e, km_recorridos_e, aire_acondicionado_e
-                            ]
-                        
-                        # Actualizar en la tabla de repostajes
+                        df_recorridos.to_csv("data/recorridos.csv", index=False)
+                    else: # Repostaje
                         consumo_km_gal_e = np.nan
                         costo_por_km_e = np.nan
-
+                        
                         df_repostajes = df_repostajes[df_repostajes['fecha'] != registro_actual['fecha']]
                         nuevo_repostaje = pd.DataFrame([{
                             "fecha": fecha_e,
@@ -236,8 +220,7 @@ try:
                             "precio": precio_e,
                             "km_recorridos_acum": np.nan,
                             "consumo_km_gal": np.nan,
-                            "costo_por_km": np.nan,
-                            "km_restante_tablero": km_restante_e
+                            "costo_por_km": np.nan
                         }])
                         df_repostajes = pd.concat([df_repostajes, nuevo_repostaje], ignore_index=True)
                         df_repostajes = df_repostajes.sort_values(by="fecha").reset_index(drop=True)
@@ -251,8 +234,8 @@ try:
                                 df_repostajes.loc[i, "costo_por_km"] = precio / km_recorridos_acum
                                 df_repostajes.loc[i, "km_recorridos_acum"] = km_recorridos_acum
                     
-                    df_recorridos.to_csv("data/recorridos.csv", index=False)
-                    df_repostajes.to_csv("data/repostajes.csv", index=False)
+                        df_repostajes.to_csv("data/repostajes.csv", index=False)
+                    
                     st.success("✅ ¡Registro actualizado con éxito!")
                     st.session_state.editing = False
                     st.rerun()
