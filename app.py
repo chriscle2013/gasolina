@@ -105,9 +105,8 @@ else:
 
     st.button("✅ Finalizar Recorrido", on_click=finalizar_recorrido)
 
----
-
-### 📊 Resumen y Análisis
+# Sección de visualización de datos
+st.header("📊 Resumen y Análisis")
 
 try:
     df_registros = pd.read_csv("registros_combustible.csv")
@@ -149,9 +148,8 @@ try:
 except FileNotFoundError:
     st.info("No hay registros guardados. ¡Empieza a añadir tu primer recorrido!")
 
----
-
-### ✏️ Editar Registros
+# Sección de edición de registros
+st.header("✏️ Editar Registros")
 
 try:
     df_registros = pd.read_csv("registros_combustible.csv")
@@ -185,7 +183,6 @@ try:
                     km_restante_e = st.number_input("🎯 Kilometraje restante en el tablero (km)", value=int(registro_actual["km_restante"]), min_value=0, step=1, key="km_restante_e")
 
             if st.form_submit_button("💾 Guardar Cambios"):
-                # Validar y actualizar el registro
                 if km_final_e > km_inicial_e:
                     km_recorridos_e = km_final_e - km_inicial_e
                     consumo_km_gal_e = np.nan
