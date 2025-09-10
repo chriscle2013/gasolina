@@ -21,9 +21,8 @@ def iniciar_recorrido():
         st.session_state.iniciando_recorrido = True
         st.success(f"Recorrido iniciado. Kilometraje registrado: {st.session_state.km_inicial_sesion} km.")
 
-# Función para finalizar el recorrido
+# Función para finalizar el recorrido y guardar el registro
 def finalizar_recorrido():
-    # Validar que se haya iniciado un recorrido
     if st.session_state.km_inicial_sesion is None:
         st.warning("⚠️ Debes iniciar un recorrido primero.")
         return
@@ -31,29 +30,24 @@ def finalizar_recorrido():
     km_inicial = st.session_state.km_inicial_sesion
     km_final = st.session_state.km_final_input
 
-    # Validar que los datos sean coherentes
     if km_final > km_inicial:
         try:
             df_registros = pd.read_csv("registros_combustible.csv")
         except FileNotFoundError:
             df_registros = pd.DataFrame(columns=["fecha", "km_inicial", "km_final", "galones", "precio", "es_repostaje", "aire_acondicionado", "km_recorridos", "consumo_km_gal", "costo_por_km", "km_restante"])
 
-        # Capturar los datos del formulario de finalización
         fecha = st.session_state.fecha_input
         aire_acondicionado = st.session_state.aire_acondicionado_input
         es_repostaje = st.session_state.es_repostaje_input
 
-        # Calcular los kilómetros recorridos
         km_recorridos = km_final - km_inicial
         
-        # Iniciar variables con valores por defecto
         consumo_km_gal = np.nan
         costo_por_km = np.nan
         km_restante = 0
         galones = 0
         precio = 0
 
-        # Corregir el error: solo acceder a los valores de la sesión si la casilla fue marcada
         if es_repostaje:
             if 'galones_input' in st.session_state:
                 galones = st.session_state.galones_input
@@ -66,7 +60,6 @@ def finalizar_recorrido():
                 consumo_km_gal = km_recorridos / galones
                 costo_por_km = precio / km_recorridos
         
-        # Crear un nuevo registro
         nuevo_registro = pd.DataFrame([{
             "fecha": fecha,
             "km_inicial": km_inicial,
@@ -85,16 +78,14 @@ def finalizar_recorrido():
         df_registros.to_csv("registros_combustible.csv", index=False)
         st.success("✅ Recorrido finalizado y registro añadido con éxito.")
         
-        # Resetear el estado de la sesión para el próximo recorrido
         st.session_state.iniciando_recorrido = False
         st.session_state.km_inicial_sesion = None
     else:
         st.warning("⚠️ El kilometraje final debe ser mayor que el inicial.")
 
 # -----------------
-# INTERFAZ DE USUARIO
+# INTERFAZ DE USUARIO - FORMULARIO DE REGISTRO
 # -----------------
-# Mostrar el formulario para iniciar o finalizar recorrido
 if not st.session_state.iniciando_recorrido:
     st.header("1️⃣ Iniciar Recorrido")
     st.number_input("🚗 Kilometraje inicial (km):", key="km_inicial_input", min_value=0, step=1)
@@ -107,7 +98,6 @@ else:
 
     es_repostaje = st.checkbox("⛽ ¿Este registro incluye un repostaje?", key="es_repostaje_input")
 
-    # Seccion de inputs de combustible, solo se muestra si el checkbox de repostaje esta activo
     if es_repostaje:
         st.number_input("💧 Cantidad de combustible (galones):", key="galones_input", min_value=0.01)
         st.number_input("💰 Precio total del repostaje ($ COP):", key="precio_input", min_value=0.01)
@@ -115,18 +105,15 @@ else:
 
     st.button("✅ Finalizar Recorrido", on_click=finalizar_recorrido)
 
-# ---
-st.divider()
+---
 
-# Sección de visualización de datos
-st.header("📊 Resumen y Análisis")
+### 📊 Resumen y Análisis
 
 try:
     df_registros = pd.read_csv("registros_combustible.csv")
     st.subheader("📋 Historial de Registros")
     st.dataframe(df_registros)
 
-    # Filtrar solo los registros de repostaje para el análisis de consumo
     df_repostajes = df_registros[df_registros["es_repostaje"] == True].dropna(subset=["consumo_km_gal", "costo_por_km"])
 
     if not df_repostajes.empty:
@@ -142,7 +129,6 @@ try:
         st.metric(label="Consumo Promedio (km/galón)", value=f"{promedio_consumo:.2f}")
         st.metric(label="Costo Promedio por Kilómetro", value=f"${promedio_costo:,.2f} COP")
 
-        # Análisis con y sin aire acondicionado (solo en registros de repostaje)
         st.subheader("Análisis comparativo (con/sin aire acondicionado)")
         df_con_ac = df_repostajes[df_repostajes["aire_acondicionado"] == True]
         df_sin_ac = df_repostajes[df_repostajes["aire_acondicionado"] == False]
@@ -162,3 +148,59 @@ try:
         st.info("No hay suficientes registros de repostaje para mostrar el análisis.")
 except FileNotFoundError:
     st.info("No hay registros guardados. ¡Empieza a añadir tu primer recorrido!")
+
+---
+
+### ✏️ Editar Registros
+
+try:
+    df_registros = pd.read_csv("registros_combustible.csv")
+    
+    opciones_edicion = [f"Registro {i+1} ({row['fecha']})" for i, row in df_registros.iterrows()]
+    registro_a_editar_indice = st.selectbox("Selecciona el registro a editar:", range(len(opciones_edicion)), format_func=lambda i: opciones_edicion[i])
+
+    if st.button("📝 Cargar para editar"):
+        st.session_state.registro_seleccionado = df_registros.iloc[registro_a_editar_indice]
+        st.session_state.editing = True
+    
+    if "editing" in st.session_state and st.session_state.editing:
+        st.subheader("Formulario de Edición")
+        registro_actual = st.session_state.registro_seleccionado
+        
+        with st.form("formulario_edicion"):
+            fecha_e = st.date_input("📅 Fecha", value=pd.to_datetime(registro_actual["fecha"]), key="fecha_e")
+            km_inicial_e = st.number_input("🚗 Kilometraje inicial (km)", value=int(registro_actual["km_inicial"]), min_value=0, step=1, key="km_inicial_e")
+            km_final_e = st.number_input("🏁 Kilometraje final (km)", value=int(registro_actual["km_final"]), min_value=0, step=1, key="km_final_e")
+            aire_acondicionado_e = st.checkbox("❄️ ¿Se usó el aire acondicionado?", value=bool(registro_actual["aire_acondicionado"]), key="aire_acondicionado_e")
+            es_repostaje_e = st.checkbox("⛽ ¿Incluye un repostaje?", value=bool(registro_actual["es_repostaje"]), key="es_repostaje_e")
+
+            galones_e = 0.0
+            precio_e = 0.0
+            km_restante_e = 0
+
+            if es_repostaje_e:
+                galones_e = st.number_input("💧 Cantidad de combustible (galones)", value=float(registro_actual["galones"]), min_value=0.01, key="galones_e")
+                precio_e = st.number_input("💰 Precio total del repostaje ($ COP)", value=float(registro_actual["precio"]), min_value=0.01, key="precio_e")
+                if "km_restante" in registro_actual:
+                    km_restante_e = st.number_input("🎯 Kilometraje restante en el tablero (km)", value=int(registro_actual["km_restante"]), min_value=0, step=1, key="km_restante_e")
+
+            if st.form_submit_button("💾 Guardar Cambios"):
+                # Validar y actualizar el registro
+                if km_final_e > km_inicial_e:
+                    km_recorridos_e = km_final_e - km_inicial_e
+                    consumo_km_gal_e = np.nan
+                    costo_por_km_e = np.nan
+
+                    if es_repostaje_e and galones_e > 0 and precio_e > 0:
+                        consumo_km_gal_e = km_recorridos_e / galones_e
+                        costo_por_km_e = precio_e / km_recorridos_e
+
+                    df_registros.loc[registro_a_editar_indice, [
+                        "fecha", "km_inicial", "km_final", "galones", "precio", "es_repostaje", 
+                        "aire_acondicionado", "km_recorridos", "consumo_km_gal", "costo_por_km", "km_restante"
+                    ]] = [
+                        fecha_e, km_inicial_e, km_final_e, galones_e, precio_e, es_repostaje_e, 
+                        aire_acondicionado_e, km_recorridos_e, consumo_km_gal_e, costo_por_km_e, km_restante_e
+                    ]
+                    
+                    df_registros.to_csv("registros
