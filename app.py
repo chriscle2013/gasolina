@@ -16,9 +16,10 @@ if "km_inicial_sesion" not in st.session_state:
 
 # Función para iniciar el recorrido
 def iniciar_recorrido():
-    st.session_state.km_inicial_sesion = st.session_state.km_inicial_input
-    st.session_state.iniciando_recorrido = True
-    st.success(f"Recorrido iniciado. Kilometraje registrado: {st.session_state.km_inicial_sesion} km.")
+    if "km_inicial_input" in st.session_state:
+        st.session_state.km_inicial_sesion = st.session_state.km_inicial_input
+        st.session_state.iniciando_recorrido = True
+        st.success(f"Recorrido iniciado. Kilometraje registrado: {st.session_state.km_inicial_sesion} km.")
 
 # Función para finalizar el recorrido
 def finalizar_recorrido():
@@ -45,17 +46,21 @@ def finalizar_recorrido():
         # Calcular los kilómetros recorridos
         km_recorridos = km_final - km_inicial
         
-        # Calcular consumo y costo solo si es un repostaje
+        # Iniciar variables con valores por defecto
         consumo_km_gal = np.nan
         costo_por_km = np.nan
         km_restante = 0
         galones = 0
         precio = 0
 
+        # Corregir el error: solo acceder a los valores de la sesión si la casilla fue marcada
         if es_repostaje:
-            galones = st.session_state.galones_input
-            precio = st.session_state.precio_input
-            km_restante = st.session_state.km_restante_input
+            if 'galones_input' in st.session_state:
+                galones = st.session_state.galones_input
+            if 'precio_input' in st.session_state:
+                precio = st.session_state.precio_input
+            if 'km_restante_input' in st.session_state:
+                km_restante = st.session_state.km_restante_input
 
             if galones > 0 and precio > 0:
                 consumo_km_gal = km_recorridos / galones
@@ -96,20 +101,19 @@ if not st.session_state.iniciando_recorrido:
     st.button("🟢 Iniciar Recorrido", on_click=iniciar_recorrido)
 else:
     st.header(f"2️⃣ Finalizar Recorrido (Iniciaste en {st.session_state.km_inicial_sesion} km)")
-    with st.form("form_finalizar_recorrido"):
-        st.date_input("📅 Fecha del registro:", key="fecha_input")
-        st.number_input("🏁 Kilometraje final (km):", key="km_final_input", min_value=st.session_state.km_inicial_sesion + 1, step=1)
-        st.checkbox("❄️ ¿Se usó el aire acondicionado?", key="aire_acondicionado_input")
+    st.date_input("📅 Fecha del registro:", key="fecha_input")
+    st.number_input("🏁 Kilometraje final (km):", key="km_final_input", min_value=st.session_state.km_inicial_sesion + 1, step=1)
+    st.checkbox("❄️ ¿Se usó el aire acondicionado?", key="aire_acondicionado_input")
 
-        es_repostaje = st.checkbox("⛽ ¿Este registro incluye un repostaje?", key="es_repostaje_input")
+    es_repostaje = st.checkbox("⛽ ¿Este registro incluye un repostaje?", key="es_repostaje_input")
 
-        # Seccion de inputs de combustible, solo se muestra si el checkbox de repostaje esta activo
-        if es_repostaje:
-            st.number_input("💧 Cantidad de combustible (galones):", key="galones_input", min_value=0.01)
-            st.number_input("💰 Precio total del repostaje ($ COP):", key="precio_input", min_value=0.01)
-            st.number_input("🎯 Kilometraje restante en el tablero (km):", key="km_restante_input", min_value=0, step=1)
+    # Seccion de inputs de combustible, solo se muestra si el checkbox de repostaje esta activo
+    if es_repostaje:
+        st.number_input("💧 Cantidad de combustible (galones):", key="galones_input", min_value=0.01)
+        st.number_input("💰 Precio total del repostaje ($ COP):", key="precio_input", min_value=0.01)
+        st.number_input("🎯 Kilometraje restante en el tablero (km):", key="km_restante_input", min_value=0, step=1)
 
-        st.form_submit_button("✅ Finalizar Recorrido", on_click=finalizar_recorrido)
+    st.button("✅ Finalizar Recorrido", on_click=finalizar_recorrido)
 
 # ---
 st.divider()
