@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import os
 
 # Título de la aplicación y descripción
 st.title("⛽ Control de Gasto de Combustible (Kia Seltos 2021)")
@@ -13,6 +14,11 @@ st.write("Registra tus recorridos y repostajes para un cálculo de consumo preci
 if "km_inicial_sesion" not in st.session_state:
     st.session_state.km_inicial_sesion = None
     st.session_state.iniciando_recorrido = False
+
+# Crear la carpeta de datos si no existe
+def ensure_data_directory_exists():
+    if not os.path.exists('data'):
+        os.makedirs('data')
 
 # Función para iniciar el recorrido
 def iniciar_recorrido():
@@ -31,8 +37,9 @@ def finalizar_recorrido():
     km_final = st.session_state.km_final_input
 
     if km_final > km_inicial:
+        ensure_data_directory_exists()
         try:
-            df_recorridos = pd.read_csv("recorridos.csv")
+            df_recorridos = pd.read_csv("data/recorridos.csv")
         except FileNotFoundError:
             df_recorridos = pd.DataFrame(columns=["fecha", "km_inicial", "km_final", "km_recorridos", "aire_acondicionado"])
 
@@ -47,7 +54,7 @@ def finalizar_recorrido():
         }])
         
         df_recorridos = pd.concat([df_recorridos, nuevo_recorrido], ignore_index=True)
-        df_recorridos.to_csv("recorridos.csv", index=False)
+        df_recorridos.to_csv("data/recorridos.csv", index=False)
         st.success("✅ Recorrido finalizado y registro añadido con éxito.")
         
         st.session_state.iniciando_recorrido = False
@@ -65,8 +72,9 @@ def registrar_repostaje():
         st.warning("⚠️ La cantidad de galones y el precio total deben ser mayores a cero.")
         return
 
+    ensure_data_directory_exists()
     try:
-        df_repostajes = pd.read_csv("repostajes.csv")
+        df_repostajes = pd.read_csv("data/repostajes.csv")
     except FileNotFoundError:
         df_repostajes = pd.DataFrame(columns=["fecha", "km_actual", "galones", "precio", "km_recorridos_acum", "consumo_km_gal", "costo_por_km"])
 
@@ -93,13 +101,14 @@ def registrar_repostaje():
     }])
     
     df_repostajes = pd.concat([df_repostajes, nuevo_repostaje], ignore_index=True)
-    df_repostajes.to_csv("repostajes.csv", index=False)
+    df_repostajes.to_csv("data/repostajes.csv", index=False)
     st.success("✅ Repostaje registrado con éxito. El consumo se calculará en el próximo llenado.")
 
 # Función para registrar el kilometraje
 def registrar_kilometraje():
+    ensure_data_directory_exists()
     try:
-        df_kilometraje = pd.read_csv("kilometraje.csv")
+        df_kilometraje = pd.read_csv("data/kilometraje.csv")
     except FileNotFoundError:
         df_kilometraje = pd.DataFrame(columns=["fecha", "km_actual", "km_restante_tablero"])
 
@@ -110,9 +119,8 @@ def registrar_kilometraje():
     }])
 
     df_kilometraje = pd.concat([df_kilometraje, nuevo_registro_km], ignore_index=True)
-    df_kilometraje.to_csv("kilometraje.csv", index=False)
+    df_kilometraje.to_csv("data/kilometraje.csv", index=False)
     st.success("✅ Registro de kilometraje guardado con éxito.")
-
 
 # -----------------
 # INTERFAZ DE USUARIO
@@ -143,7 +151,7 @@ st.button("➕ Añadir Repostaje", on_click=registrar_repostaje)
 st.divider()
 
 # Formulario para Registrar Kilometraje
-st.header(" odometer Registrar Kilometraje y Kilometraje Restante")
+st.header("odometer Registrar Kilometraje y Kilometraje Restante")
 st.write("Usa esta sección para llevar un registro del kilometraje actual y el del tablero.")
 st.date_input("📅 Fecha del registro:", key="fecha_km_input")
 st.number_input("🚗 Kilometraje actual (km):", key="km_actual_input_km", min_value=0, step=1)
@@ -156,7 +164,7 @@ st.divider()
 st.header("📊 Resumen y Análisis")
 
 try:
-    df_repostajes = pd.read_csv("repostajes.csv")
+    df_repostajes = pd.read_csv("data/repostajes.csv")
     st.subheader("📋 Historial de Repostajes")
     st.dataframe(df_repostajes)
 
@@ -176,11 +184,11 @@ try:
         st.info("No hay suficientes registros de repostaje para mostrar el análisis.")
 
     st.subheader("📋 Historial de Recorridos")
-    df_recorridos = pd.read_csv("recorridos.csv")
+    df_recorridos = pd.read_csv("data/recorridos.csv")
     st.dataframe(df_recorridos)
 
     st.subheader("📋 Historial de Kilometraje y Kilometraje Restante")
-    df_kilometraje = pd.read_csv("kilometraje.csv")
+    df_kilometraje = pd.read_csv("data/kilometraje.csv")
     st.dataframe(df_kilometraje)
     
     st.subheader("📈 Kilometraje Restante en el Tablero")
