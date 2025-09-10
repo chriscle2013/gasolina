@@ -77,4 +77,125 @@ def registrar_repostaje():
     try:
         df_repostajes = pd.read_csv("data/repostajes.csv")
     except FileNotFoundError:
-        df_repostajes = pd.DataFrame(columns=["fecha", "km_actual", "galones", "precio", "km_recorridos_acum", "consumo_km_gal", "cost
+        df_repostajes = pd.DataFrame(columns=["fecha", "km_actual", "galones", "precio", "km_recorridos_acum", "consumo_km_gal", "costo_por_km"])
+
+    km_recorridos_acum = 0
+    consumo_km_gal = np.nan
+    costo_por_km = np.nan
+
+    if not df_repostajes.empty:
+        ultimo_km_repostaje = df_repostajes["km_actual"].iloc[-1]
+        km_recorridos_acum = km_actual_repostaje - ultimo_km_repostaje
+        
+        if km_recorridos_acum > 0:
+            consumo_km_gal = km_recorridos_acum / galones_repostaje
+            costo_por_km = precio_repostaje / km_recorridos_acum
+    
+    nuevo_repostaje = pd.DataFrame([{
+        "fecha": st.session_state.fecha_repostaje_input,
+        "km_actual": km_actual_repostaje,
+        "galones": galones_repostaje,
+        "precio": precio_repostaje,
+        "km_recorridos_acum": km_recorridos_acum,
+        "consumo_km_gal": consumo_km_gal,
+        "costo_por_km": costo_por_km
+    }])
+    
+    df_repostajes = pd.concat([df_repostajes, nuevo_repostaje], ignore_index=True)
+    df_repostajes.to_csv("data/repostajes.csv", index=False)
+    st.success("✅ Repostaje registrado con éxito. El consumo se calculará en el próximo llenado.")
+    st.rerun()
+
+# Función para registrar el kilometraje
+def registrar_kilometraje():
+    ensure_data_directory_exists()
+    try:
+        df_kilometraje = pd.read_csv("data/kilometraje.csv")
+    except FileNotFoundError:
+        df_kilometraje = pd.DataFrame(columns=["fecha", "km_actual", "km_restante_tablero"])
+
+    nuevo_registro_km = pd.DataFrame([{
+        "fecha": st.session_state.fecha_km_input,
+        "km_actual": st.session_state.km_actual_input_km,
+        "km_restante_tablero": st.session_state.km_restante_input_km
+    }])
+
+    df_kilometraje = pd.concat([df_kilometraje, nuevo_registro_km], ignore_index=True)
+    df_kilometraje.to_csv("data/kilometraje.csv", index=False)
+    st.success("✅ Registro de kilometraje guardado con éxito.")
+    st.rerun()
+
+# -----------------
+# INTERFAZ DE USUARIO
+# -----------------
+# Formulario de Registro de Recorridos
+if not st.session_state.iniciando_recorrido:
+    st.header("1️⃣ Iniciar Recorrido")
+    st.number_input("🚗 Kilometraje inicial (km):", key="km_inicial_input", min_value=0, step=1)
+    st.button("🟢 Iniciar Recorrido", on_click=iniciar_recorrido)
+else:
+    st.header(f"2️⃣ Finalizar Recorrido (Iniciaste en {st.session_state.km_inicial_sesion} km)")
+    st.date_input("📅 Fecha del registro:", key="fecha_recorrido_input")
+    st.number_input("🏁 Kilometraje final (km):", key="km_final_input", min_value=st.session_state.km_inicial_sesion + 1, step=1)
+    st.checkbox("❄️ ¿Se usó el aire acondicionado?", key="aire_acondicionado_input")
+    st.button("✅ Finalizar Recorrido", on_click=finalizar_recorrido)
+
+st.divider()
+
+# Formulario para Repostajes
+st.header("⛽ Registrar Repostaje")
+st.write("Solo usa esta sección cuando llenes el tanque.")
+st.date_input("📅 Fecha del repostaje:", key="fecha_repostaje_input")
+st.number_input("🚗 Kilometraje actual:", key="km_repostaje_input", min_value=0, step=1)
+st.number_input("💧 Cantidad de combustible (galones):", key="galones_repostaje_input", min_value=0.01)
+st.number_input("💰 Precio total del repostaje ($ COP):", key="precio_repostaje_input", min_value=0.01)
+st.button("➕ Añadir Repostaje", on_click=registrar_repostaje)
+
+st.divider()
+
+# Formulario para Registrar Kilometraje
+st.header("odometer Registrar Kilometraje y Kilometraje Restante")
+st.write("Usa esta sección para llevar un registro del kilometraje actual y el del tablero.")
+st.date_input("📅 Fecha del registro:", key="fecha_km_input")
+st.number_input("🚗 Kilometraje actual (km):", key="km_actual_input_km", min_value=0, step=1)
+st.number_input("🎯 Kilometraje restante en el tablero (km):", key="km_restante_input_km", min_value=0, step=1)
+st.button("➕ Añadir Registro de Kilometraje", on_click=registrar_kilometraje)
+
+st.divider()
+
+# Sección de visualización de datos
+st.header("📊 Resumen y Análisis")
+
+try:
+    df_repostajes = pd.read_csv("data/repostajes.csv")
+    st.subheader("📋 Historial de Repostajes")
+    st.dataframe(df_repostajes)
+
+    if not df_repostajes.empty:
+        st.subheader("📈 Consumo por Repostaje (km/galón)")
+        st.line_chart(df_repostajes["consumo_km_gal"])
+        st.subheader("📉 Costo por Kilómetro ($ COP)")
+        st.line_chart(df_repostajes["costo_por_km"])
+
+        st.subheader("💡 Métricas Clave Promedio")
+        promedio_consumo = df_repostajes["consumo_km_gal"].mean()
+        promedio_costo = df_repostajes["costo_por_km"].mean()
+        
+        st.metric(label="Consumo Promedio (km/galón)", value=f"{promedio_consumo:.2f}")
+        st.metric(label="Costo Promedio por Kilómetro", value=f"${promedio_costo:,.2f} COP")
+    else:
+        st.info("No hay suficientes registros de repostaje para mostrar el análisis.")
+
+    st.subheader("📋 Historial de Recorridos")
+    df_recorridos = pd.read_csv("data/recorridos.csv")
+    st.dataframe(df_recorridos)
+
+    st.subheader("📋 Historial de Kilometraje y Kilometraje Restante")
+    df_kilometraje = pd.read_csv("data/kilometraje.csv")
+    st.dataframe(df_kilometraje)
+    
+    st.subheader("📈 Kilometraje Restante en el Tablero")
+    st.line_chart(df_kilometraje, x="fecha", y="km_restante_tablero")
+
+except FileNotFoundError:
+    st.info("No hay registros guardados. ¡Empieza a añadir tus primeros recorridos y repostajes!")
