@@ -124,7 +124,7 @@ else:
     if st.button("✅ Finalizar Recorrido"):
         finalizar_recorrido()
         
----
+st.divider()
 
 # Sección de visualización de datos
 st.header("📊 Resumen y Análisis")
@@ -169,7 +169,7 @@ try:
 except FileNotFoundError:
     st.info("No hay registros guardados. ¡Empieza a añadir tu primer recorrido!")
 
----
+st.divider()
 
 # Sección de edición de registros
 st.header("✏️ Editar Registros")
