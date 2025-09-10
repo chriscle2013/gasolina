@@ -96,6 +96,24 @@ def registrar_repostaje():
     df_repostajes.to_csv("repostajes.csv", index=False)
     st.success("✅ Repostaje registrado con éxito. El consumo se calculará en el próximo llenado.")
 
+# Función para registrar el kilometraje
+def registrar_kilometraje():
+    try:
+        df_kilometraje = pd.read_csv("kilometraje.csv")
+    except FileNotFoundError:
+        df_kilometraje = pd.DataFrame(columns=["fecha", "km_actual", "km_restante_tablero"])
+
+    nuevo_registro_km = pd.DataFrame([{
+        "fecha": st.session_state.fecha_km_input,
+        "km_actual": st.session_state.km_actual_input_km,
+        "km_restante_tablero": st.session_state.km_restante_input_km
+    }])
+
+    df_kilometraje = pd.concat([df_kilometraje, nuevo_registro_km], ignore_index=True)
+    df_kilometraje.to_csv("kilometraje.csv", index=False)
+    st.success("✅ Registro de kilometraje guardado con éxito.")
+
+
 # -----------------
 # INTERFAZ DE USUARIO
 # -----------------
@@ -111,7 +129,6 @@ else:
     st.checkbox("❄️ ¿Se usó el aire acondicionado?", key="aire_acondicionado_input")
     st.button("✅ Finalizar Recorrido", on_click=finalizar_recorrido)
 
-# ---
 st.divider()
 
 # Formulario para Repostajes
@@ -123,7 +140,16 @@ st.number_input("💧 Cantidad de combustible (galones):", key="galones_repostaj
 st.number_input("💰 Precio total del repostaje ($ COP):", key="precio_repostaje_input", min_value=0.01)
 st.button("➕ Añadir Repostaje", on_click=registrar_repostaje)
 
-# ---
+st.divider()
+
+# Formulario para Registrar Kilometraje
+st.header(" odometer Registrar Kilometraje y Kilometraje Restante")
+st.write("Usa esta sección para llevar un registro del kilometraje actual y el del tablero.")
+st.date_input("📅 Fecha del registro:", key="fecha_km_input")
+st.number_input("🚗 Kilometraje actual (km):", key="km_actual_input_km", min_value=0, step=1)
+st.number_input("🎯 Kilometraje restante en el tablero (km):", key="km_restante_input_km", min_value=0, step=1)
+st.button("➕ Añadir Registro de Kilometraje", on_click=registrar_kilometraje)
+
 st.divider()
 
 # Sección de visualización de datos
@@ -152,6 +178,13 @@ try:
     st.subheader("📋 Historial de Recorridos")
     df_recorridos = pd.read_csv("recorridos.csv")
     st.dataframe(df_recorridos)
+
+    st.subheader("📋 Historial de Kilometraje y Kilometraje Restante")
+    df_kilometraje = pd.read_csv("kilometraje.csv")
+    st.dataframe(df_kilometraje)
+    
+    st.subheader("📈 Kilometraje Restante en el Tablero")
+    st.line_chart(df_kilometraje, x="fecha", y="km_restante_tablero")
 
 except FileNotFoundError:
     st.info("No hay registros guardados. ¡Empieza a añadir tus primeros recorridos y repostajes!")
