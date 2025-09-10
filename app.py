@@ -71,7 +71,7 @@ else:
         else:
             st.warning("⚠️ El kilometraje final debe ser mayor que el inicial.")
 
----
+st.divider()
 
 # Formulario para Repostajes
 st.header("⛽ Registrar Repostaje")
@@ -122,7 +122,7 @@ with st.form("repostaje_form", clear_on_submit=True):
             st.success("✅ Repostaje registrado con éxito. El análisis de consumo se actualizará con el próximo llenado.")
             st.rerun()
 
----
+st.divider()
 
 # Sección de visualización de datos
 st.header("📊 Resumen y Análisis")
