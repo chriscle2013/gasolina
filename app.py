@@ -49,6 +49,8 @@ def finalizar_recorrido():
         consumo_km_gal = np.nan
         costo_por_km = np.nan
         km_restante = 0
+        galones = 0
+        precio = 0
 
         if es_repostaje:
             galones = st.session_state.galones_input
@@ -64,8 +66,8 @@ def finalizar_recorrido():
             "fecha": fecha,
             "km_inicial": km_inicial,
             "km_final": km_final,
-            "galones": galones if es_repostaje else 0,
-            "precio": precio if es_repostaje else 0,
+            "galones": galones,
+            "precio": precio,
             "es_repostaje": es_repostaje,
             "aire_acondicionado": aire_acondicionado,
             "km_recorridos": km_recorridos,
@@ -101,6 +103,7 @@ else:
 
         es_repostaje = st.checkbox("⛽ ¿Este registro incluye un repostaje?", key="es_repostaje_input")
 
+        # Seccion de inputs de combustible, solo se muestra si el checkbox de repostaje esta activo
         if es_repostaje:
             st.number_input("💧 Cantidad de combustible (galones):", key="galones_input", min_value=0.01)
             st.number_input("💰 Precio total del repostaje ($ COP):", key="precio_input", min_value=0.01)
@@ -119,6 +122,7 @@ try:
     st.subheader("📋 Historial de Registros")
     st.dataframe(df_registros)
 
+    # Filtrar solo los registros de repostaje para el análisis de consumo
     df_repostajes = df_registros[df_registros["es_repostaje"] == True].dropna(subset=["consumo_km_gal", "costo_por_km"])
 
     if not df_repostajes.empty:
@@ -134,6 +138,7 @@ try:
         st.metric(label="Consumo Promedio (km/galón)", value=f"{promedio_consumo:.2f}")
         st.metric(label="Costo Promedio por Kilómetro", value=f"${promedio_costo:,.2f} COP")
 
+        # Análisis con y sin aire acondicionado (solo en registros de repostaje)
         st.subheader("Análisis comparativo (con/sin aire acondicionado)")
         df_con_ac = df_repostajes[df_repostajes["aire_acondicionado"] == True]
         df_sin_ac = df_repostajes[df_repostajes["aire_acondicionado"] == False]
