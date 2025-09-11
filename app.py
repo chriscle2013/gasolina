@@ -265,4 +265,4 @@ try:
                     st.rerun()
 
 except FileNotFoundError:
-    st.info("No hay registros para editar. ¡Añade uno primero!")
+    st.info("No hay registros para editar o eliminar. ¡Añade uno primero!")
