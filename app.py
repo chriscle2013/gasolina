@@ -194,7 +194,7 @@ try:
                 km_final_e = st.number_input("🏁 Kilometraje final (km)", value=int(registro_actual.get("km_final", 0)) if not pd.isna(registro_actual.get("km_final", np.nan)) else 0, min_value=0, step=1, key="km_final_e")
                 aire_acondicionado_e = st.checkbox("❄️ ¿Se usó el aire acondicionado?", value=bool(registro_actual.get("aire_acondicionado", False)) if not pd.isna(registro_actual.get("aire_acondicionado", np.nan)) else False, key="aire_acondicionado_e")
                 km_restante_e = st.number_input("🎯 Kilometraje restante en el tablero (km)", value=int(registro_actual.get("km_restante", 0)) if not pd.isna(registro_actual.get("km_restante", np.nan)) else 0, min_value=0, step=1, key="km_restante_e")
-                
+
                 guardar_cambios = st.form_submit_button("💾 Guardar Cambios")
                 eliminar_registro = st.form_submit_button("🗑️ Eliminar Registro")
 
@@ -207,3 +207,62 @@ try:
                         ]] = [
                             fecha_e, km_inicial_e, km_final_e, km_recorridos_e, aire_acondicionado_e, km_restante_e
                         ]
+                        df_recorridos_para_editar.to_csv("data/recorridos.csv", index=False)
+                        st.success("✅ ¡Registro de recorrido actualizado con éxito!")
+                        st.session_state.editing = False
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ El kilometraje final debe ser mayor que el inicial para guardar.")
+                
+                if eliminar_registro:
+                    df_recorridos_para_editar = pd.read_csv("data/recorridos.csv")
+                    df_recorridos_para_editar = df_recorridos_para_editar[df_recorridos_para_editar['id'] != registro_actual['id']]
+                    df_recorridos_para_editar.to_csv("data/recorridos.csv", index=False)
+                    st.success("✅ ¡Registro de recorrido eliminado con éxito!")
+                    st.session_state.editing = False
+                    st.rerun()
+
+            elif registro_actual['tipo'] == 'Repostaje':
+                km_actual_e = st.number_input("🚗 Kilometraje actual:", value=int(registro_actual.get("km_actual", 0)) if not pd.isna(registro_actual.get("km_actual", np.nan)) else 0, min_value=0, step=1, key="km_actual_e")
+                galones_e = st.number_input("💧 Cantidad de combustible (galones)", value=float(registro_actual.get("galones", 0.01)), min_value=0.01, key="galones_e")
+                precio_e = st.number_input("💰 Precio total del repostaje ($ COP)", value=float(registro_actual.get("precio", 0.01)), min_value=0.01, key="precio_e")
+                
+                guardar_cambios = st.form_submit_button("💾 Guardar Cambios")
+                eliminar_registro = st.form_submit_button("🗑️ Eliminar Registro")
+            
+                if guardar_cambios:
+                    if galones_e <= 0 or precio_e <= 0:
+                        st.warning("⚠️ La cantidad de galones y el precio total deben ser mayores a cero.")
+                    else:
+                        df_repostajes_para_editar = pd.read_csv("data/repostajes.csv")
+                        df_repostajes_para_editar.loc[df_repostajes_para_editar['id'] == registro_actual['id'], [
+                            "fecha", "km_actual", "galones", "precio", "km_recorridos_acum", "consumo_km_gal", "costo_por_km"
+                        ]] = [
+                            fecha_e, km_actual_e, galones_e, precio_e, np.nan, np.nan, np.nan
+                        ]
+                        
+                        df_repostajes_para_editar = df_repostajes_para_editar.sort_values(by="fecha").reset_index(drop=True)
+                        for i in range(1, len(df_repostajes_para_editar)):
+                            km_recorridos_acum = df_repostajes_para_editar['km_actual'].iloc[i] - df_repostajes_para_editar['km_actual'].iloc[i-1]
+                            galones = df_repostajes_para_editar['galones'].iloc[i]
+                            precio = df_repostajes_para_editar['precio'].iloc[i]
+                            if galones > 0 and km_recorridos_acum > 0:
+                                df_repostajes_para_editar.loc[i, "consumo_km_gal"] = km_recorridos_acum / galones
+                                df_repostajes_para_editar.loc[i, "costo_por_km"] = precio / km_recorridos_acum
+                                df_repostajes_para_editar.loc[i, "km_recorridos_acum"] = km_recorridos_acum
+                        
+                        df_repostajes_para_editar.to_csv("data/repostajes.csv", index=False)
+                        st.success("✅ ¡Registro de repostaje actualizado con éxito!")
+                        st.session_state.editing = False
+                        st.rerun()
+
+                if eliminar_registro:
+                    df_repostajes_para_editar = pd.read_csv("data/repostajes.csv")
+                    df_repostajes_para_editar = df_repostajes_para_editar[df_repostajes_para_editar['id'] != registro_actual['id']]
+                    df_repostajes_para_editar.to_csv("data/repostajes.csv", index=False)
+                    st.success("✅ ¡Registro de repostaje eliminado con éxito!")
+                    st.session_state.editing = False
+                    st.rerun()
+
+except FileNotFoundError:
+    st.info("No hay registros para editar. ¡Añade uno primero!")
