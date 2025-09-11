@@ -162,9 +162,12 @@ try:
     df_recorridos = pd.read_csv("data/recorridos.csv")
     df_repostajes = pd.read_csv("data/repostajes.csv")
 
+    df_recorridos = df_recorridos.reset_index().rename(columns={'index': 'original_index'})
+    df_repostajes = df_repostajes.reset_index().rename(columns={'index': 'original_index'})
+
     df_registros_combinados = pd.concat([
-        df_recorridos.assign(tipo='Recorrido', id=df_recorridos.index),
-        df_repostajes.assign(tipo='Repostaje', id=df_repostajes.index)
+        df_recorridos.assign(tipo='Recorrido'),
+        df_repostajes.assign(tipo='Repostaje')
     ], ignore_index=True)
     
     df_registros_combinados = df_registros_combinados.sort_values(by="fecha", ascending=False).reset_index(drop=True)
@@ -196,12 +199,13 @@ try:
                     if km_final_e > km_inicial_e:
                         km_recorridos_e = km_final_e - km_inicial_e
                         
-                        df_recorridos.loc[registro_actual['id'], [
+                        df_recorridos_para_editar = pd.read_csv("data/recorridos.csv")
+                        df_recorridos_para_editar.loc[registro_actual['original_index'], [
                             "fecha", "km_inicial", "km_final", "km_recorridos", "aire_acondicionado", "km_restante"
                         ]] = [
                             fecha_e, km_inicial_e, km_final_e, km_recorridos_e, aire_acondicionado_e, km_restante_e
                         ]
-                        df_recorridos.to_csv("data/recorridos.csv", index=False)
+                        df_recorridos_para_editar.to_csv("data/recorridos.csv", index=False)
                         st.success("✅ ¡Registro de recorrido actualizado con éxito!")
                         st.session_state.editing = False
                         st.rerun()
@@ -217,23 +221,24 @@ try:
                     if galones_e <= 0 or precio_e <= 0:
                         st.warning("⚠️ La cantidad de galones y el precio total deben ser mayores a cero.")
                     else:
-                        df_repostajes.loc[registro_actual['id'], [
+                        df_repostajes_para_editar = pd.read_csv("data/repostajes.csv")
+                        df_repostajes_para_editar.loc[registro_actual['original_index'], [
                             "fecha", "km_actual", "galones", "precio", "km_recorridos_acum", "consumo_km_gal", "costo_por_km"
                         ]] = [
                             fecha_e, km_actual_e, galones_e, precio_e, np.nan, np.nan, np.nan
                         ]
                         
-                        df_repostajes = df_repostajes.sort_values(by="fecha").reset_index(drop=True)
-                        for i in range(1, len(df_repostajes)):
-                            km_recorridos_acum = df_repostajes['km_actual'].iloc[i] - df_repostajes['km_actual'].iloc[i-1]
-                            galones = df_repostajes['galones'].iloc[i]
-                            precio = df_repostajes['precio'].iloc[i]
+                        df_repostajes_para_editar = df_repostajes_para_editar.sort_values(by="fecha").reset_index(drop=True)
+                        for i in range(1, len(df_repostajes_para_editar)):
+                            km_recorridos_acum = df_repostajes_para_editar['km_actual'].iloc[i] - df_repostajes_para_editar['km_actual'].iloc[i-1]
+                            galones = df_repostajes_para_editar['galones'].iloc[i]
+                            precio = df_repostajes_para_editar['precio'].iloc[i]
                             if galones > 0 and km_recorridos_acum > 0:
-                                df_repostajes.loc[i, "consumo_km_gal"] = km_recorridos_acum / galones
-                                df_repostajes.loc[i, "costo_por_km"] = precio / km_recorridos_acum
-                                df_repostajes.loc[i, "km_recorridos_acum"] = km_recorridos_acum
+                                df_repostajes_para_editar.loc[i, "consumo_km_gal"] = km_recorridos_acum / galones
+                                df_repostajes_para_editar.loc[i, "costo_por_km"] = precio / km_recorridos_acum
+                                df_repostajes_para_editar.loc[i, "km_recorridos_acum"] = km_recorridos_acum
                         
-                        df_repostajes.to_csv("data/repostajes.csv", index=False)
+                        df_repostajes_para_editar.to_csv("data/repostajes.csv", index=False)
                         st.success("✅ ¡Registro de repostaje actualizado con éxito!")
                         st.session_state.editing = False
                         st.rerun()
