@@ -15,9 +15,11 @@ GSHEETS_URL = "https://docs.google.com/spreadsheets/d/1k_91FFgqh1kCUx-f480vQ55cn
 
 # Crea la conexión a Google Sheets. Streamlit lee automáticamente las credenciales de secrets.toml
 try:
+    # 1. Intenta conectarte usando la clave gsheets
     conn = st.connection("gsheets", type="streamlit_gsheets")
 except Exception as e:
-    st.error("Error de conexión con Google Sheets. Asegúrate de que las credenciales en .streamlit/secrets.toml son correctas y de haber compartido la hoja con la cuenta de servicio.")
+    # 2. Si falla, el mensaje se imprime.
+    st.error(f"Error de conexión con Google Sheets: {e}")
     st.stop()
 
 
