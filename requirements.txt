@@ -1,2 +1,4 @@
 streamlit
 pandas
+numpy # Recomendado, ya que lo estás usando en tu lógica de repostajes
+streamlit-gsheets # <<-- ¡Esta es la librería clave que faltaba!
