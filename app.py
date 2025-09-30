@@ -10,7 +10,7 @@ st.write("Registra tus recorridos y repostajes para un control preciso de tu con
 # --- CONFIGURACIÓN DE CONEXIÓN A GOOGLE SHEETS ---
 # REEMPLAZA ESTA URL con la URL de tu hoja de cálculo.
 # EJEMPLO: https://docs.google.com/spreadsheets/d/1234567890abcdefghijklmnopqrstuvwxyz/edit
-GSHEETS_URL = "https://docs.google.com/spreadsheets/d/1k_91FFgqh1kCUx-f480vQ55cnXv_k5hp3Z9XSelfkLg/edit"
+GSHEETS_URL = "https://docs.google.com/spreadsheets/d/1k_91FFgqh1kCUx-f480vQ55cnXv_k5hp3Z9XSelfkLg/edit?usp=sharing"
 
 # Crea la conexión a Google Sheets. Streamlit lee automáticamente las credenciales de secrets.toml
 try:
