@@ -49,7 +49,7 @@ def create_tables(conn):
 def get_db_connection():
     """Establece y mantiene la conexión a la base de datos SQLite."""
     try:
-        # CORRECCIÓN FINAL DE HILOS: check_same_thread=False
+        # CORRECCIÓN DE HILOS: check_same_thread=False
         conn = sqlite3.connect('app_data.sqlite', check_same_thread=False) 
         
         create_tables(conn)
@@ -91,7 +91,7 @@ def execute_query(query, params=()):
         cursor = conn.cursor()
         cursor.execute(query, params)
         conn.commit()
-        st.cache_data.clear() # Limpia la caché para que load_data recargue con los nuevos datos
+        st.cache_data.clear() # Limpia la caché
         return True
     except Exception as e:
         st.error(f"Error al ejecutar la consulta: {e}")
@@ -124,7 +124,8 @@ def update_repostajes_analysis(df_repostajes):
             else:
                 df_repostajes.loc[i, "km_recorridos_acum"] = np.nan 
 
-    df_repostajes = df_repostajes.drop(columns=['km_anterior']).round(2)
+    # CORRECCIÓN KEYERROR: Usar errors='ignore' para evitar fallar si km_anterior no existe (solo 1 registro)
+    df_repostajes = df_repostajes.drop(columns=['km_anterior'], errors='ignore').round(2)
     return df_repostajes
 
 # ----------------------------------------
@@ -132,7 +133,6 @@ def update_repostajes_analysis(df_repostajes):
 # ----------------------------------------
 
 conn = get_db_connection() 
-# La creación de tablas ya ocurrió dentro de get_db_connection().
 
 # Carga inicial de datos (para usar en el resto de la app)
 df_recorridos_global = load_data("recorridos")
@@ -176,7 +176,7 @@ with st.form("recorrido_form", clear_on_submit=True):
             
             if execute_query(query, params):
                 st.success("✅ Recorrido registrado con éxito.")
-                st.rerun() # Refresca la interfaz
+                st.rerun() 
         else:
             st.warning("⚠️ El kilometraje final debe ser mayor que el inicial.")
 
@@ -214,7 +214,7 @@ with st.form("repostaje_form", clear_on_submit=True):
             
             if execute_query(query, params):
                 st.success("✅ Repostaje registrado con éxito. El análisis de consumo se actualizará al recargar.")
-                st.rerun() # Refresca la interfaz
+                st.rerun()
 
 st.divider()
 
