@@ -13,18 +13,17 @@ st.set_page_config(layout="wide", page_title="Control de Combustible SQLite")
 # 🚀 CONEXIÓN PERSISTENTE CON SQLITE
 # ----------------------------------------
 
-# Usamos st.cache_resource para mantener la conexión a la base de datos persistente
-# y activa a través de los reinicios de la aplicación.
 @st.cache_resource
 def get_db_connection():
     """Establece y mantiene la conexión a la base de datos SQLite."""
     try:
-        # Se conecta a un archivo local que es cacheado por Streamlit.
+        # La base de datos se guarda en la caché de recursos persistente de Streamlit.
         conn = sqlite3.connect('app_data.sqlite')
         return conn
     except Exception as e:
+        # Devuelve None si la conexión falla, y el código principal maneja la detención.
         st.error(f"Error al conectar con SQLite: {e}")
-        st.stop()
+        return None
 
 def create_tables(conn):
     """Crea las tablas Recorridos y Repostajes si aún no existen."""
@@ -64,7 +63,7 @@ def load_data(table_name):
     try:
         df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
         
-        # Conversión de tipos de datos para cálculos
+        # Conversión de tipos de datos para cálculos (importante para evitar errores)
         if table_name == "recorridos":
             for col in ['km_inicial', 'km_final', 'km_recorridos', 'km_restante']:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
@@ -121,7 +120,8 @@ def update_repostajes_analysis(df_repostajes):
                 df_repostajes.loc[i, "consumo_km_gal"] = km_rec / galones
                 df_repostajes.loc[i, "costo_por_km"] = precio / km_rec
             else:
-                df_repostajes.loc[i, "km_recorridos_acum"] = np.nan # No es el primer repostaje, pero el dato es inválido
+                # Si el dato es inválido, forzar NaN para que no contamine el promedio
+                df_repostajes.loc[i, "km_recorridos_acum"] = np.nan 
 
     df_repostajes = df_repostajes.drop(columns=['km_anterior']).round(2)
     return df_repostajes
@@ -129,9 +129,17 @@ def update_repostajes_analysis(df_repostajes):
 # ----------------------------------------
 # 🎯 INICIALIZACIÓN DE LA APLICACIÓN
 # ----------------------------------------
+
 conn = get_db_connection()
+
+# CORRECCIÓN DE ERROR: Verifica la conexión antes de crear tablas o proceder.
+if conn is None:
+    st.error("No se pudo inicializar la conexión con la base de datos SQLite. Por favor, revise los logs.")
+    st.stop()
+
 create_tables(conn)
 
+# Carga inicial de datos (para usar en el resto de la app)
 df_recorridos_global = load_data("recorridos")
 df_repostajes_global = load_data("repostajes")
 
