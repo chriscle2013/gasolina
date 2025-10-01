@@ -1,56 +1,111 @@
+¡Absolutamente! Aquí tienes el código app.py completo, adaptado para usar SQLite con persistencia a través de la caché de recursos de Streamlit.
+
+Este código ya no depende de Google Sheets ni de archivos CSV que se pierden. Solo necesitas asegurar que tu requirements.txt tenga streamlit, pandas, y numpy.
+
+💻 Código Completo para app.py (SQLite Persistente)
+Python
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import uuid
-from pathlib import Path
-import os
+import sqlite3
 import time
+from datetime import datetime
 
-# --- CONFIGURACIÓN DE ARCHIVOS ---
-# Rutas relativas a la carpeta 'data/' en tu repositorio
-BASE_DIR = Path(__file__).resolve().parent
-RECORRIDOS_PATH = BASE_DIR / "data" / "recorridos.csv"
-REPOSTAJES_PATH = BASE_DIR / "data" / "repostajes.csv"
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(layout="wide", page_title="Control de Combustible SQLite")
 
-# --- FUNCIONES DE LECTURA Y ESCRITURA ---
+# ----------------------------------------
+# 🚀 CONEXIÓN PERSISTENTE CON SQLITE
+# ----------------------------------------
 
-@st.cache_data(ttl=1) # Cachea por 1 segundo para ver los cambios rápidamente
-def load_data(file_path, sheet_name):
-    """Carga datos desde un archivo CSV local o lo crea si no existe."""
-    cols_recorridos = ["id", "fecha", "km_inicial", "km_final", "km_recorridos", "aire_acondicionado", "km_restante"]
-    cols_repostajes = ["id", "fecha", "km_actual", "galones", "precio", "km_recorridos_acum", "consumo_km_gal", "costo_por_km"]
-    
-    # Define las columnas basadas en el nombre del archivo
-    cols = cols_recorridos if sheet_name == "Recorridos" else cols_repostajes
-
-    if not file_path.exists():
-        # Crea un DataFrame vacío si el archivo no existe
-        df = pd.DataFrame(columns=cols)
-        # Inicializa el archivo CSV vacío con solo los encabezados
-        df.to_csv(file_path, index=False)
-        return df
-    
+# Usamos st.cache_resource para mantener la conexión a la base de datos persistente
+# y activa a través de los reinicios de la aplicación.
+@st.cache_resource
+def get_db_connection():
+    """Establece y mantiene la conexión a la base de datos SQLite."""
     try:
-        df = pd.read_csv(file_path)
-        df = df.dropna(how='all') # Elimina filas completamente vacías
+        # Se conecta a un archivo local que es cacheado por Streamlit.
+        conn = sqlite3.connect('app_data.sqlite')
+        return conn
+    except Exception as e:
+        st.error(f"Error al conectar con SQLite: {e}")
+        st.stop()
+
+def create_tables(conn):
+    """Crea las tablas Recorridos y Repostajes si aún no existen."""
+    cursor = conn.cursor()
+    
+    # 1. Tabla Recorridos
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS recorridos (
+            id TEXT PRIMARY KEY,
+            fecha TEXT,
+            km_inicial INTEGER,
+            km_final INTEGER,
+            km_recorridos INTEGER,
+            aire_acondicionado BOOLEAN,
+            km_restante INTEGER
+        )
+    """)
+    
+    # 2. Tabla Repostajes
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS repostajes (
+            id TEXT PRIMARY KEY,
+            fecha TEXT,
+            km_actual INTEGER,
+            galones REAL,
+            precio REAL,
+            km_recorridos_acum REAL,
+            consumo_km_gal REAL,
+            costo_por_km REAL
+        )
+    """)
+    conn.commit()
+
+@st.cache_data(ttl=1)
+def load_data(table_name):
+    """Carga todos los datos de una tabla a un DataFrame de Pandas."""
+    try:
+        df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
         
-        # Forzar tipos para cálculos
-        if sheet_name == "Recorridos":
+        # Conversión de tipos de datos para cálculos
+        if table_name == "recorridos":
             for col in ['km_inicial', 'km_final', 'km_recorridos', 'km_restante']:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
             df['aire_acondicionado'] = df['aire_acondicionado'].astype(bool)
-        elif sheet_name == "Repostajes":
+        elif table_name == "repostajes":
             df['km_actual'] = pd.to_numeric(df['km_actual'], errors='coerce').fillna(0).astype(int)
             df['galones'] = pd.to_numeric(df['galones'], errors='coerce').fillna(0.0)
             df['precio'] = pd.to_numeric(df['precio'], errors='coerce').fillna(0.0)
-
+            
         return df
     except Exception as e:
-        st.error(f"Error al leer el archivo {file_path.name}: {e}. Asegúrate de que los encabezados son correctos.")
-        return pd.DataFrame(columns=cols)
+        st.error(f"Error al leer la tabla {table_name}: {e}")
+        return pd.DataFrame()
+
+def execute_query(query, params=()):
+    """Ejecuta una consulta SQL y fuerza la recarga de datos."""
+    try:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        conn.commit()
+        st.cache_data.clear() # Limpia la caché para que load_data recargue con los nuevos datos
+        st.rerun()
+        return True
+    except Exception as e:
+        st.error(f"Error al ejecutar la consulta: {e}")
+        return False
 
 def update_repostajes_analysis(df_repostajes):
     """Recalcula las métricas de repostaje después de un cambio."""
+    if df_repostajes.empty:
+        return df_repostajes
+    
+    # Asegura que las fechas sean tratadas como fechas y ordena
+    df_repostajes['fecha'] = pd.to_datetime(df_repostajes['fecha'])
     df_repostajes = df_repostajes.sort_values(by="fecha").reset_index(drop=True)
     
     # Inicializar columnas que se recalcularán
@@ -59,34 +114,36 @@ def update_repostajes_analysis(df_repostajes):
     df_repostajes['costo_por_km'] = np.nan
 
     if len(df_repostajes) > 1:
+        # Los cálculos se basan en la diferencia entre el KM actual y el KM del repostaje anterior
+        df_repostajes['km_anterior'] = df_repostajes['km_actual'].shift(1)
+        df_repostajes['km_recorridos_acum'] = df_repostajes['km_actual'] - df_repostajes['km_anterior']
+        
+        # Aplicar cálculos solo a las filas con datos de repostajes válidos
         for i in range(1, len(df_repostajes)):
-            km_recorridos_acum = df_repostajes['km_actual'].iloc[i] - df_repostajes['km_actual'].iloc[i-1]
-            galones = df_repostajes['galones'].iloc[i]
-            precio = df_repostajes['precio'].iloc[i]
-            if galones > 0 and km_recorridos_acum > 0:
-                df_repostajes.loc[i, "consumo_km_gal"] = km_recorridos_acum / galones
-                df_repostajes.loc[i, "costo_por_km"] = precio / km_recorridos_acum
-                df_repostajes.loc[i, "km_recorridos_acum"] = km_recorridos_acum
+            km_rec = df_repostajes.loc[i, 'km_recorridos_acum']
+            galones = df_repostajes.loc[i, 'galones']
+            precio = df_repostajes.loc[i, 'precio']
+            
+            if km_rec > 0 and galones > 0:
+                df_repostajes.loc[i, "consumo_km_gal"] = km_rec / galones
+                df_repostajes.loc[i, "costo_por_km"] = precio / km_rec
+            else:
+                df_repostajes.loc[i, "km_recorridos_acum"] = np.nan # No es el primer repostaje, pero el dato es inválido
+
+    df_repostajes = df_repostajes.drop(columns=['km_anterior']).round(2)
     return df_repostajes
 
-def save_data(df, file_path):
-    """Guarda el DataFrame en el archivo CSV."""
-    try:
-        df.to_csv(file_path, index=False)
-        return True
-    except Exception as e:
-        st.error(f"Error al guardar los datos en {file_path.name}: {e}")
-        return False
+# ----------------------------------------
+# 🎯 INICIALIZACIÓN DE LA APLICACIÓN
+# ----------------------------------------
+conn = get_db_connection()
+create_tables(conn)
 
-# --- LÓGICA PRINCIPAL ---
+df_recorridos_global = load_data("recorridos")
+df_repostajes_global = load_data("repostajes")
 
-st.title("⛽ Control de Gasto de Combustible (Almacenamiento Local)")
-st.write("Los datos se guardan directamente en archivos CSV en tu repositorio de GitHub.")
-
-# Recarga los datos globales
-df_recorridos_global = load_data(RECORRIDOS_PATH, "Recorridos")
-df_repostajes_global = load_data(REPOSTAJES_PATH, "Repostajes")
-
+st.title("⛽ Control de Gasto de Combustible (SQLite)")
+st.caption("Los datos se guardan de forma persistente gracias a la caché de recursos de Streamlit.")
 
 # -----------------
 # FORMULARIO DE RECORRIDOS (CREACIÓN)
@@ -106,25 +163,23 @@ with st.form("recorrido_form", clear_on_submit=True):
             
             km_recorridos = km_final_recorrido - km_inicial_recorrido
             
-            nuevo_recorrido = pd.DataFrame([{
-                "id": str(uuid.uuid4()),
-                "fecha": str(fecha_recorrido),
-                "km_inicial": km_inicial_recorrido,
-                "km_final": km_final_recorrido,
-                "km_recorridos": km_recorridos,
-                "aire_acondicionado": aire_acondicionado,
-                "km_restante": km_restante
-            }])
+            query = """
+                INSERT INTO recorridos 
+                (id, fecha, km_inicial, km_final, km_recorridos, aire_acondicionado, km_restante) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """
+            params = (
+                str(uuid.uuid4()), 
+                str(fecha_recorrido), 
+                km_inicial_recorrido, 
+                km_final_recorrido, 
+                km_recorridos, 
+                aire_acondicionado, 
+                km_restante
+            )
             
-            # 1. Combina el nuevo registro con el DataFrame global
-            df_recorridos_updated = pd.concat([df_recorridos_global, nuevo_recorrido], ignore_index=True)
-            
-            # 2. Guarda el DataFrame actualizado en el archivo CSV
-            if save_data(df_recorridos_updated, RECORRIDOS_PATH):
+            if execute_query(query, params):
                 st.success("✅ Recorrido registrado con éxito.")
-                st.cache_data.clear()
-                time.sleep(0.1) # Pausa mínima para que el sistema de archivos se actualice
-                st.rerun()
         else:
             st.warning("⚠️ El kilometraje final debe ser mayor que el inicial.")
 
@@ -147,26 +202,21 @@ with st.form("repostaje_form", clear_on_submit=True):
             st.warning("⚠️ La cantidad de galones y el precio total deben ser mayores a cero.")
         else:
             
-            nuevo_repostaje = pd.DataFrame([{
-                "id": str(uuid.uuid4()),
-                "fecha": str(fecha_repostaje),
-                "km_actual": km_actual_repostaje,
-                "galones": galones_repostaje,
-                "precio": precio_repostaje,
-                "km_recorridos_acum": np.nan, 
-                "consumo_km_gal": np.nan,
-                "costo_por_km": np.nan
-            }])
+            query = """
+                INSERT INTO repostajes 
+                (id, fecha, km_actual, galones, precio, km_recorridos_acum, consumo_km_gal, costo_por_km) 
+                VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)
+            """
+            params = (
+                str(uuid.uuid4()), 
+                str(fecha_repostaje), 
+                km_actual_repostaje, 
+                galones_repostaje, 
+                precio_repostaje
+            )
             
-            # 1. Combina el nuevo registro con el DataFrame global
-            df_repostajes_updated = pd.concat([df_repostajes_global, nuevo_repostaje], ignore_index=True)
-
-            # 2. Guarda el DataFrame actualizado en el archivo CSV
-            if save_data(df_repostajes_updated, REPOSTAJES_PATH):
+            if execute_query(query, params):
                 st.success("✅ Repostaje registrado con éxito. El análisis de consumo se actualizará al recargar.")
-                st.cache_data.clear()
-                time.sleep(0.1)
-                st.rerun()
 
 st.divider()
 
@@ -175,22 +225,23 @@ st.divider()
 # -----------------
 st.header("📊 Resumen y Análisis")
 
-df_recorridos = load_data(RECORRIDOS_PATH, "Recorridos")
+df_recorridos = load_data("recorridos")
 st.subheader("📋 Historial de Recorridos")
 if not df_recorridos.empty:
-    st.dataframe(df_recorridos.drop(columns=["id"]).sort_values(by="fecha", ascending=False))
+    st.dataframe(df_recorridos.drop(columns=["id"]).sort_values(by="fecha", ascending=False), use_container_width=True)
 else:
     st.info("No hay registros de recorridos guardados.")
 
 st.divider()
 
-df_repostajes = load_data(REPOSTAJES_PATH, "Repostajes")
+df_repostajes = load_data("repostajes")
 df_repostajes_analisis = update_repostajes_analysis(df_repostajes.copy())
 
 st.subheader("📋 Historial de Repostajes")
 if not df_repostajes.empty:
-    st.dataframe(df_repostajes_analisis.drop(columns=["id"]).sort_values(by="fecha", ascending=False))
-    # ... (El resto del análisis de gráficas y métricas es el mismo)
+    st.dataframe(df_repostajes_analisis.drop(columns=["id"]).sort_values(by="fecha", ascending=False), use_container_width=True)
+    
+    # Lógica para mostrar métricas y gráficas
     if len(df_repostajes_analisis.dropna(subset=['consumo_km_gal'])) > 0:
         st.subheader("📈 Consumo y Gasto por Tanqueada")
         st.line_chart(df_repostajes_analisis, x="fecha", y=["consumo_km_gal", "costo_por_km"])
@@ -206,11 +257,10 @@ if not df_repostajes.empty:
             st.metric(label="Costo Promedio por Kilómetro", value=f"${promedio_costo:,.2f} COP")
 
         st.subheader("🎯 Último Kilometraje Restante en Tablero")
-        # Asegúrate de que df_recorridos no esté vacío antes de acceder a iloc[-1]
         if not df_recorridos.empty and "km_restante" in df_recorridos.columns:
             st.metric(label="Kilometraje restante estimado", value=f"{df_recorridos['km_restante'].iloc[-1]} km")
     else:
-        st.info("No hay suficientes registros de repostaje con datos de recorrido (Km/galón) para mostrar el análisis.")
+        st.info("No hay suficientes registros de repostaje con datos de recorrido para el análisis.")
 else:
     st.info("No hay registros de repostaje guardados.")
 
@@ -220,27 +270,25 @@ st.divider()
 # SECCIÓN DE EDICIÓN Y ELIMINACIÓN
 # -----------------
 st.header("✏️ Editar o Eliminar Registros")
-st.info("Selecciona, edita y luego guarda. Esto reescribirá el archivo CSV.")
-
-# Recarga de datos para edición
-df_recorridos = load_data(RECORRIDOS_PATH, "Recorridos")
-df_repostajes = load_data(REPOSTAJES_PATH, "Repostajes")
 
 if not df_recorridos.empty or not df_repostajes.empty:
-    # Lógica para combinar y seleccionar (similar a la versión de Google Sheets)
+    
+    # Preparación de datos combinados para el selectbox
     df_registros_combinados = pd.concat([
         df_recorridos.assign(tipo='Recorrido'),
         df_repostajes.assign(tipo='Repostaje')
-    ], ignore_index=True)
+    ], ignore_index=True, sort=False)
     
     df_registros_combinados = df_registros_combinados.sort_values(by="fecha", ascending=False).reset_index(drop=True)
 
     opciones_edicion = [f"Tipo: {row['tipo']} | Fecha: {row['fecha']}" for i, row in df_registros_combinados.iterrows()]
     
+    # El índice seleccionado en el selectbox
     registro_a_editar_indice = st.selectbox("Selecciona el registro a editar:", range(len(opciones_edicion)), format_func=lambda i: opciones_edicion[i], key="sel_edit")
     
+    # Cargar el registro seleccionado al estado de sesión para edición
     if st.button("📝 Cargar para editar", key="btn_load"):
-        st.session_state.registro_seleccionado = df_registros_combinados.iloc[registro_a_editar_indice]
+        st.session_state.registro_seleccionado = df_registros_combinados.iloc[registro_a_editar_indice].to_dict()
         st.session_state.editing = True
         st.rerun()
 
@@ -253,20 +301,18 @@ if not df_recorridos.empty or not df_repostajes.empty:
             
             registro_id = registro_actual['id']
             tipo = registro_actual['tipo']
-            file_path = RECORRIDOS_PATH if tipo == 'Recorrido' else REPOSTAJES_PATH
-            df_hoja_completa = df_recorridos if tipo == 'Recorrido' else df_repostajes
+            table_name = 'recorridos' if tipo == 'Recorrido' else 'repostajes'
             
-            # Encuentra el índice basado en el ID para actualizar el DataFrame
-            idx_to_update = df_hoja_completa[df_hoja_completa['id'] == registro_id].index[0]
+            # Formato de fecha para el widget
+            fecha_e_dt = pd.to_datetime(registro_actual.get("fecha")).date()
+            fecha_e = st.date_input("📅 Fecha", value=fecha_e_dt, key="fecha_e_sql")
 
-            fecha_e = st.date_input("📅 Fecha", value=pd.to_datetime(registro_actual["fecha"]), key="fecha_e_csv")
-            
             if tipo == 'Recorrido':
-                # Obtención de valores y widgets de edición
-                km_inicial_e = st.number_input("🚗 Kilometraje inicial (km)", value=int(registro_actual.get("km_inicial", 0)), min_value=0, step=1, key="ki_e_csv")
-                km_final_e = st.number_input("🏁 Kilometraje final (km)", value=int(registro_actual.get("km_final", 0)), min_value=0, step=1, key="kf_e_csv")
-                aire_acondicionado_e = st.checkbox("❄️ ¿Se usó el aire acondicionado?", value=bool(registro_actual.get("aire_acondicionado", False)), key="ac_e_csv")
-                km_restante_e = st.number_input("🎯 Kilometraje restante en el tablero (km)", value=int(registro_actual.get("km_restante", 0)), min_value=0, step=1, key="kr_e_csv")
+                # Widgets de edición
+                km_inicial_e = st.number_input("🚗 Kilometraje inicial (km)", value=int(registro_actual.get("km_inicial", 0)), min_value=0, step=1, key="ki_e_sql")
+                km_final_e = st.number_input("🏁 Kilometraje final (km)", value=int(registro_actual.get("km_final", 0)), min_value=0, step=1, key="kf_e_sql")
+                aire_acondicionado_e = st.checkbox("❄️ ¿Se usó el aire acondicionado?", value=bool(registro_actual.get("aire_acondicionado", False)), key="ac_e_sql")
+                km_restante_e = st.number_input("🎯 Kilometraje restante en el tablero (km)", value=int(registro_actual.get("km_restante", 0)), min_value=0, step=1, key="kr_e_sql")
 
                 col_g, col_e = st.columns(2)
                 with col_g:
@@ -278,37 +324,32 @@ if not df_recorridos.empty or not df_repostajes.empty:
                     if km_final_e > km_inicial_e:
                         km_recorridos_e = km_final_e - km_inicial_e
                         
-                        # Actualiza la fila en el DataFrame en memoria
-                        df_hoja_completa.loc[idx_to_update, "fecha"] = str(fecha_e)
-                        df_hoja_completa.loc[idx_to_update, "km_inicial"] = km_inicial_e
-                        df_hoja_completa.loc[idx_to_update, "km_final"] = km_final_e
-                        df_hoja_completa.loc[idx_to_update, "km_recorridos"] = km_recorridos_e
-                        df_hoja_completa.loc[idx_to_update, "aire_acondicionado"] = aire_acondicionado_e
-                        df_hoja_completa.loc[idx_to_update, "km_restante"] = km_restante_e
+                        query = """
+                            UPDATE recorridos SET 
+                            fecha = ?, km_inicial = ?, km_final = ?, km_recorridos = ?, 
+                            aire_acondicionado = ?, km_restante = ? 
+                            WHERE id = ?
+                        """
+                        params = (str(fecha_e), km_inicial_e, km_final_e, km_recorridos_e, 
+                                  aire_acondicionado_e, km_restante_e, registro_id)
                         
-                        if save_data(df_hoja_completa, file_path):
+                        if execute_query(query, params):
                             st.success("✅ ¡Registro de recorrido actualizado con éxito!")
                             st.session_state.editing = False
-                            st.cache_data.clear()
-                            st.rerun()
                     else:
                         st.warning("⚠️ El kilometraje final debe ser mayor que el inicial para guardar.")
                 
                 if eliminar_registro:
-                    # Elimina la fila del DataFrame
-                    df_hoja_completa = df_hoja_completa.drop(index=idx_to_update).reset_index(drop=True)
-
-                    if save_data(df_hoja_completa, file_path):
+                    query = "DELETE FROM recorridos WHERE id = ?"
+                    if execute_query(query, (registro_id,)):
                         st.success("✅ ¡Registro de recorrido eliminado con éxito!")
                         st.session_state.editing = False
-                        st.cache_data.clear()
-                        st.rerun()
 
             elif tipo == 'Repostaje':
-                # Obtención de valores y widgets de edición
-                km_actual_e = st.number_input("🚗 Kilometraje actual:", value=int(registro_actual.get("km_actual", 0)), min_value=0, step=1, key="ka_e_csv")
-                galones_e = st.number_input("💧 Cantidad de combustible (galones)", value=float(registro_actual.get("galones", 0.01)), min_value=0.01, key="g_e_csv")
-                precio_e = st.number_input("💰 Precio total del repostaje ($ COP)", value=float(registro_actual.get("precio", 0.01)), min_value=0.01, key="p_e_csv")
+                # Widgets de edición
+                km_actual_e = st.number_input("🚗 Kilometraje actual:", value=int(registro_actual.get("km_actual", 0)), min_value=0, step=1, key="ka_e_sql")
+                galones_e = st.number_input("💧 Cantidad de combustible (galones)", value=float(registro_actual.get("galones", 0.01)), min_value=0.01, key="g_e_sql")
+                precio_e = st.number_input("💰 Precio total del repostaje ($ COP)", value=float(registro_actual.get("precio", 0.01)), min_value=0.01, key="p_e_sql")
                 
                 col_g, col_e = st.columns(2)
                 with col_g:
@@ -320,26 +361,22 @@ if not df_recorridos.empty or not df_repostajes.empty:
                     if galones_e <= 0 or precio_e <= 0:
                         st.warning("⚠️ La cantidad de galones y el precio total deben ser mayores a cero.")
                     else:
-                        # Actualiza la fila en el DataFrame en memoria
-                        df_hoja_completa.loc[idx_to_update, "fecha"] = str(fecha_e)
-                        df_hoja_completa.loc[idx_to_update, "km_actual"] = km_actual_e
-                        df_hoja_completa.loc[idx_to_update, "galones"] = galones_e
-                        df_hoja_completa.loc[idx_to_update, "precio"] = precio_e
+                        # La actualización de métricas (consumo, costo) se hace automáticamente en la carga
+                        query = """
+                            UPDATE repostajes SET 
+                            fecha = ?, km_actual = ?, galones = ?, precio = ? 
+                            WHERE id = ?
+                        """
+                        params = (str(fecha_e), km_actual_e, galones_e, precio_e, registro_id)
 
-                        if save_data(df_hoja_completa, file_path):
+                        if execute_query(query, params):
                             st.success("✅ ¡Registro de repostaje actualizado con éxito!")
                             st.session_state.editing = False
-                            st.cache_data.clear()
-                            st.rerun()
 
                 if eliminar_registro:
-                    # Elimina la fila del DataFrame
-                    df_hoja_completa = df_hoja_completa.drop(index=idx_to_update).reset_index(drop=True)
-
-                    if save_data(df_hoja_completa, file_path):
+                    query = "DELETE FROM repostajes WHERE id = ?"
+                    if execute_query(query, (registro_id,)):
                         st.success("✅ ¡Registro de repostaje eliminado con éxito!")
                         st.session_state.editing = False
-                        st.cache_data.clear()
-                        st.rerun()
 else:
     st.info("No hay registros para editar o eliminar. ¡Añade uno primero!")
