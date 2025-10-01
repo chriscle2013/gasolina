@@ -21,12 +21,15 @@ def get_db_connection():
         conn = sqlite3.connect('app_data.sqlite')
         return conn
     except Exception as e:
-        # Devuelve None si la conexión falla, y el código principal maneja la detención.
-        st.error(f"Error al conectar con SQLite: {e}")
-        return None
+        # CORRECCIÓN CRÍTICA: Si falla la conexión, mostramos el error y detenemos el script
+        st.error(f"Error CRÍTICO al conectar con SQLite: {e}")
+        st.stop()
+        # Nota: La función debe retornar algo, aunque st.stop() ya detiene la ejecución
+        return None 
 
 def create_tables(conn):
     """Crea las tablas Recorridos y Repostajes si aún no existen."""
+    # La validación de 'conn' ahora ocurre antes de llamar esta función.
     cursor = conn.cursor()
     
     # 1. Tabla Recorridos
@@ -63,7 +66,7 @@ def load_data(table_name):
     try:
         df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
         
-        # Conversión de tipos de datos para cálculos (importante para evitar errores)
+        # Conversión de tipos de datos para cálculos
         if table_name == "recorridos":
             for col in ['km_inicial', 'km_final', 'km_recorridos', 'km_restante']:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
@@ -130,14 +133,11 @@ def update_repostajes_analysis(df_repostajes):
 # 🎯 INICIALIZACIÓN DE LA APLICACIÓN
 # ----------------------------------------
 
-conn = get_db_connection()
+conn = get_db_connection() 
+# Si get_db_connection() falla, la línea st.stop() dentro detiene el script
+# antes de que intente usar 'conn' aquí.
 
-# CORRECCIÓN DE ERROR: Verifica la conexión antes de crear tablas o proceder.
-if conn is None:
-    st.error("No se pudo inicializar la conexión con la base de datos SQLite. Por favor, revise los logs.")
-    st.stop()
-
-create_tables(conn)
+create_tables(conn) 
 
 # Carga inicial de datos (para usar en el resto de la app)
 df_recorridos_global = load_data("recorridos")
