@@ -13,23 +13,9 @@ st.set_page_config(layout="wide", page_title="Control de Combustible SQLite")
 # 🚀 CONEXIÓN PERSISTENTE CON SQLITE
 # ----------------------------------------
 
-@st.cache_resource
-def get_db_connection():
-    """Establece y mantiene la conexión a la base de datos SQLite."""
-    try:
-        # La base de datos se guarda en la caché de recursos persistente de Streamlit.
-        conn = sqlite3.connect('app_data.sqlite')
-        return conn
-    except Exception as e:
-        # CORRECCIÓN CRÍTICA: Si falla la conexión, mostramos el error y detenemos el script
-        st.error(f"Error CRÍTICO al conectar con SQLite: {e}")
-        st.stop()
-        # Nota: La función debe retornar algo, aunque st.stop() ya detiene la ejecución
-        return None 
-
 def create_tables(conn):
     """Crea las tablas Recorridos y Repostajes si aún no existen."""
-    # La validación de 'conn' ahora ocurre antes de llamar esta función.
+    # Nota: Esta función ya no es @st.cache_data, sino un auxiliar de la conexión.
     cursor = conn.cursor()
     
     # 1. Tabla Recorridos
@@ -60,6 +46,27 @@ def create_tables(conn):
     """)
     conn.commit()
 
+@st.cache_resource
+def get_db_connection():
+    """Establece y mantiene la conexión a la base de datos SQLite."""
+    try:
+        # La base de datos se guarda en la caché de recursos persistente de Streamlit.
+        conn = sqlite3.connect('app_data.sqlite')
+        
+        # CORRECCIÓN CLAVE: Creamos las tablas DENTRO de la conexión cacheada
+        create_tables(conn)
+        
+        return conn
+    except Exception as e:
+        # Si falla la conexión, mostramos el error y detenemos el script inmediatamente
+        st.error(f"Error CRÍTICO al conectar con SQLite: {e}")
+        st.stop()
+        return None 
+
+# ----------------------------------------
+# 📦 FUNCIONES DE DATOS Y LÓGICA
+# ----------------------------------------
+
 @st.cache_data(ttl=1)
 def load_data(table_name):
     """Carga todos los datos de una tabla a un DataFrame de Pandas."""
@@ -88,7 +95,7 @@ def execute_query(query, params=()):
         cursor.execute(query, params)
         conn.commit()
         st.cache_data.clear() # Limpia la caché para que load_data recargue con los nuevos datos
-        st.rerun()
+        # CORRECCIÓN CLAVE: Eliminamos st.rerun() para evitar la inestabilidad en la conexión
         return True
     except Exception as e:
         st.error(f"Error al ejecutar la consulta: {e}")
@@ -99,21 +106,17 @@ def update_repostajes_analysis(df_repostajes):
     if df_repostajes.empty:
         return df_repostajes
     
-    # Asegura que las fechas sean tratadas como fechas y ordena
     df_repostajes['fecha'] = pd.to_datetime(df_repostajes['fecha'])
     df_repostajes = df_repostajes.sort_values(by="fecha").reset_index(drop=True)
     
-    # Inicializar columnas que se recalcularán
     df_repostajes['km_recorridos_acum'] = np.nan
     df_repostajes['consumo_km_gal'] = np.nan
     df_repostajes['costo_por_km'] = np.nan
 
     if len(df_repostajes) > 1:
-        # Los cálculos se basan en la diferencia entre el KM actual y el KM del repostaje anterior
         df_repostajes['km_anterior'] = df_repostajes['km_actual'].shift(1)
         df_repostajes['km_recorridos_acum'] = df_repostajes['km_actual'] - df_repostajes['km_anterior']
         
-        # Aplicar cálculos solo a las filas con datos de repostajes válidos
         for i in range(1, len(df_repostajes)):
             km_rec = df_repostajes.loc[i, 'km_recorridos_acum']
             galones = df_repostajes.loc[i, 'galones']
@@ -123,7 +126,6 @@ def update_repostajes_analysis(df_repostajes):
                 df_repostajes.loc[i, "consumo_km_gal"] = km_rec / galones
                 df_repostajes.loc[i, "costo_por_km"] = precio / km_rec
             else:
-                # Si el dato es inválido, forzar NaN para que no contamine el promedio
                 df_repostajes.loc[i, "km_recorridos_acum"] = np.nan 
 
     df_repostajes = df_repostajes.drop(columns=['km_anterior']).round(2)
@@ -134,10 +136,7 @@ def update_repostajes_analysis(df_repostajes):
 # ----------------------------------------
 
 conn = get_db_connection() 
-# Si get_db_connection() falla, la línea st.stop() dentro detiene el script
-# antes de que intente usar 'conn' aquí.
-
-create_tables(conn) 
+# La creación de tablas ya ocurrió dentro de get_db_connection().
 
 # Carga inicial de datos (para usar en el resto de la app)
 df_recorridos_global = load_data("recorridos")
@@ -181,6 +180,7 @@ with st.form("recorrido_form", clear_on_submit=True):
             
             if execute_query(query, params):
                 st.success("✅ Recorrido registrado con éxito.")
+                st.rerun() # Llamamos a rerun() aquí para refrescar la interfaz después del éxito
         else:
             st.warning("⚠️ El kilometraje final debe ser mayor que el inicial.")
 
@@ -218,6 +218,7 @@ with st.form("repostaje_form", clear_on_submit=True):
             
             if execute_query(query, params):
                 st.success("✅ Repostaje registrado con éxito. El análisis de consumo se actualizará al recargar.")
+                st.rerun() # Llamamos a rerun() aquí para refrescar la interfaz después del éxito
 
 st.divider()
 
@@ -302,7 +303,6 @@ if not df_recorridos.empty or not df_repostajes.empty:
             
             registro_id = registro_actual['id']
             tipo = registro_actual['tipo']
-            table_name = 'recorridos' if tipo == 'Recorrido' else 'repostajes'
             
             # Formato de fecha para el widget
             fecha_e_dt = pd.to_datetime(registro_actual.get("fecha")).date()
@@ -337,6 +337,7 @@ if not df_recorridos.empty or not df_repostajes.empty:
                         if execute_query(query, params):
                             st.success("✅ ¡Registro de recorrido actualizado con éxito!")
                             st.session_state.editing = False
+                            st.rerun() # Refresca después de la edición
                     else:
                         st.warning("⚠️ El kilometraje final debe ser mayor que el inicial para guardar.")
                 
@@ -345,6 +346,7 @@ if not df_recorridos.empty or not df_repostajes.empty:
                     if execute_query(query, (registro_id,)):
                         st.success("✅ ¡Registro de recorrido eliminado con éxito!")
                         st.session_state.editing = False
+                        st.rerun() # Refresca después de la eliminación
 
             elif tipo == 'Repostaje':
                 # Widgets de edición
@@ -362,7 +364,6 @@ if not df_recorridos.empty or not df_repostajes.empty:
                     if galones_e <= 0 or precio_e <= 0:
                         st.warning("⚠️ La cantidad de galones y el precio total deben ser mayores a cero.")
                     else:
-                        # La actualización de métricas (consumo, costo) se hace automáticamente en la carga
                         query = """
                             UPDATE repostajes SET 
                             fecha = ?, km_actual = ?, galones = ?, precio = ? 
@@ -373,11 +374,13 @@ if not df_recorridos.empty or not df_repostajes.empty:
                         if execute_query(query, params):
                             st.success("✅ ¡Registro de repostaje actualizado con éxito!")
                             st.session_state.editing = False
+                            st.rerun() # Refresca después de la edición
 
                 if eliminar_registro:
                     query = "DELETE FROM repostajes WHERE id = ?"
                     if execute_query(query, (registro_id,)):
                         st.success("✅ ¡Registro de repostaje eliminado con éxito!")
                         st.session_state.editing = False
+                        st.rerun() # Refresca después de la eliminación
 else:
     st.info("No hay registros para editar o eliminar. ¡Añade uno primero!")
