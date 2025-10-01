@@ -1,10 +1,3 @@
-¡Absolutamente! Aquí tienes el código app.py completo, adaptado para usar SQLite con persistencia a través de la caché de recursos de Streamlit.
-
-Este código ya no depende de Google Sheets ni de archivos CSV que se pierden. Solo necesitas asegurar que tu requirements.txt tenga streamlit, pandas, y numpy.
-
-💻 Código Completo para app.py (SQLite Persistente)
-Python
-
 import streamlit as st
 import pandas as pd
 import numpy as np
