@@ -2,19 +2,20 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import uuid
-import sqlite3
+# CAMBIO CRÍTICO 1: Usamos psycopg2 para PostgreSQL
+import psycopg2 
 import time
 from datetime import datetime
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(layout="wide", page_title="Control de Combustible SQLite")
+st.set_page_config(layout="wide", page_title="Control de Combustible PostgreSQL")
 
 # ----------------------------------------
-# 🚀 CONEXIÓN PERSISTENTE CON SQLITE
+# 🚀 CONEXIÓN PERSISTENTE CON POSTGRESQL (NEON)
 # ----------------------------------------
 
 def create_tables(conn):
-    """Crea las tablas Recorridos y Repostajes si aún no existen."""
+    """Crea las tablas Recorridos y Repostajes si aún no existen en PostgreSQL."""
     cursor = conn.cursor()
     
     # 1. Tabla Recorridos
@@ -44,19 +45,22 @@ def create_tables(conn):
         )
     """)
     conn.commit()
+    cursor.close() # Es buena práctica cerrar el cursor
 
 @st.cache_resource
 def get_db_connection():
-    """Establece y mantiene la conexión a la base de datos SQLite."""
+    """Establece y mantiene la conexión a la base de datos PostgreSQL (Neon)."""
     try:
-        # CORRECCIÓN DE HILOS: check_same_thread=False
-        conn = sqlite3.connect('app_data.sqlite', check_same_thread=False) 
+        # CAMBIO CRÍTICO 2: Conexión usando las credenciales de st.secrets
+        conn = psycopg2.connect(**st.secrets["neon_db"]) 
         
+        # Una vez conectado, aseguramos que las tablas existan
         create_tables(conn)
         
         return conn
     except Exception as e:
-        st.error(f"Error CRÍTICO al conectar con SQLite: {e}")
+        # Si falla la conexión a Neon, mostramos un error claro.
+        st.error(f"Error CRÍTICO al conectar con la base de datos Neon (PostgreSQL): {e}")
         st.stop()
         return None 
 
@@ -64,6 +68,7 @@ def get_db_connection():
 # 📦 FUNCIONES DE DATOS Y LÓGICA
 # ----------------------------------------
 
+# NOTA: La función load_data sigue usando pd.read_sql_query, que funciona con psycopg2/PostgreSQL.
 @st.cache_data(ttl=1)
 def load_data(table_name):
     """Carga todos los datos de una tabla a un DataFrame de Pandas."""
@@ -89,7 +94,14 @@ def execute_query(query, params=()):
     """Ejecuta una consulta SQL y fuerza la recarga de datos."""
     try:
         cursor = conn.cursor()
-        cursor.execute(query, params)
+        # En PostgreSQL, usamos %s como placeholder, no ?
+        # Debemos reemplazar '?' por '%s' si tu query usa el estilo SQLite, 
+        # pero para mayor seguridad, asumiremos que usamos el estilo de psycopg2.
+        
+        # Si usaste ? en los formularios, mantenemos el estilo de SQLite, 
+        # aunque es menos estándar en psycopg2. Si falla, el cambio es: 
+        # cursor.execute(query.replace('?', '%s'), params)
+        cursor.execute(query, params) 
         conn.commit()
         st.cache_data.clear() # Limpia la caché
         return True
@@ -124,7 +136,6 @@ def update_repostajes_analysis(df_repostajes):
             else:
                 df_repostajes.loc[i, "km_recorridos_acum"] = np.nan 
 
-    # CORRECCIÓN KEYERROR: Usar errors='ignore' para evitar fallar si km_anterior no existe (solo 1 registro)
     df_repostajes = df_repostajes.drop(columns=['km_anterior'], errors='ignore').round(2)
     return df_repostajes
 
@@ -132,14 +143,15 @@ def update_repostajes_analysis(df_repostajes):
 # 🎯 INICIALIZACIÓN DE LA APLICACIÓN
 # ----------------------------------------
 
+# La conexión ahora usa Neon y es persistente a través de reboots
 conn = get_db_connection() 
 
-# Carga inicial de datos (para usar en el resto de la app)
+# Carga inicial de datos
 df_recorridos_global = load_data("recorridos")
 df_repostajes_global = load_data("repostajes")
 
-st.title("⛽ Control de Gasto de Combustible (SQLite)")
-st.caption("Los datos se guardan de forma persistente gracias a la caché de recursos de Streamlit.")
+st.title("⛽ Control de Gasto de Combustible (PostgreSQL/Neon)")
+st.caption("Los datos son persistentes y sobreviven a los reboots de la aplicación.")
 
 # -----------------
 # FORMULARIO DE RECORRIDOS (CREACIÓN)
@@ -162,7 +174,7 @@ with st.form("recorrido_form", clear_on_submit=True):
             query = """
                 INSERT INTO recorridos 
                 (id, fecha, km_inicial, km_final, km_recorridos, aire_acondicionado, km_restante) 
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
             params = (
                 str(uuid.uuid4()), 
@@ -202,7 +214,7 @@ with st.form("repostaje_form", clear_on_submit=True):
             query = """
                 INSERT INTO repostajes 
                 (id, fecha, km_actual, galones, precio, km_recorridos_acum, consumo_km_gal, costo_por_km) 
-                VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)
+                VALUES (%s, %s, %s, %s, %s, NULL, NULL, NULL)
             """
             params = (
                 str(uuid.uuid4()), 
@@ -219,7 +231,7 @@ with st.form("repostaje_form", clear_on_submit=True):
 st.divider()
 
 # -----------------
-# SECCIÓN DE ANÁLISIS
+# SECCIÓN DE ANÁLISIS (SIN CAMBIOS)
 # -----------------
 st.header("📊 Resumen y Análisis")
 
@@ -265,7 +277,7 @@ else:
 st.divider()
 
 # -----------------
-# SECCIÓN DE EDICIÓN Y ELIMINACIÓN
+# SECCIÓN DE EDICIÓN Y ELIMINACIÓN (SIN CAMBIOS ESTRUCTURALES)
 # -----------------
 st.header("✏️ Editar o Eliminar Registros")
 
@@ -323,9 +335,9 @@ if not df_recorridos.empty or not df_repostajes.empty:
                         
                         query = """
                             UPDATE recorridos SET 
-                            fecha = ?, km_inicial = ?, km_final = ?, km_recorridos = ?, 
-                            aire_acondicionado = ?, km_restante = ? 
-                            WHERE id = ?
+                            fecha = %s, km_inicial = %s, km_final = %s, km_recorridos = %s, 
+                            aire_acondicionado = %s, km_restante = %s 
+                            WHERE id = %s
                         """
                         params = (str(fecha_e), km_inicial_e, km_final_e, km_recorridos_e, 
                                   aire_acondicionado_e, km_restante_e, registro_id)
@@ -338,7 +350,7 @@ if not df_recorridos.empty or not df_repostajes.empty:
                         st.warning("⚠️ El kilometraje final debe ser mayor que el inicial para guardar.")
                 
                 if eliminar_registro:
-                    query = "DELETE FROM recorridos WHERE id = ?"
+                    query = "DELETE FROM recorridos WHERE id = %s"
                     if execute_query(query, (registro_id,)):
                         st.success("✅ ¡Registro de recorrido eliminado con éxito!")
                         st.session_state.editing = False
@@ -362,8 +374,8 @@ if not df_recorridos.empty or not df_repostajes.empty:
                     else:
                         query = """
                             UPDATE repostajes SET 
-                            fecha = ?, km_actual = ?, galones = ?, precio = ? 
-                            WHERE id = ?
+                            fecha = %s, km_actual = %s, galones = %s, precio = %s 
+                            WHERE id = %s
                         """
                         params = (str(fecha_e), km_actual_e, galones_e, precio_e, registro_id)
 
@@ -373,7 +385,7 @@ if not df_recorridos.empty or not df_repostajes.empty:
                             st.rerun() 
 
                 if eliminar_registro:
-                    query = "DELETE FROM repostajes WHERE id = ?"
+                    query = "DELETE FROM repostajes WHERE id = %s"
                     if execute_query(query, (registro_id,)):
                         st.success("✅ ¡Registro de repostaje eliminado con éxito!")
                         st.session_state.editing = False
