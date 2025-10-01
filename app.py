@@ -15,7 +15,6 @@ st.set_page_config(layout="wide", page_title="Control de Combustible SQLite")
 
 def create_tables(conn):
     """Crea las tablas Recorridos y Repostajes si aún no existen."""
-    # Nota: Esta función ya no es @st.cache_data, sino un auxiliar de la conexión.
     cursor = conn.cursor()
     
     # 1. Tabla Recorridos
@@ -50,15 +49,13 @@ def create_tables(conn):
 def get_db_connection():
     """Establece y mantiene la conexión a la base de datos SQLite."""
     try:
-        # La base de datos se guarda en la caché de recursos persistente de Streamlit.
-        conn = sqlite3.connect('app_data.sqlite')
+        # CORRECCIÓN FINAL DE HILOS: check_same_thread=False
+        conn = sqlite3.connect('app_data.sqlite', check_same_thread=False) 
         
-        # CORRECCIÓN CLAVE: Creamos las tablas DENTRO de la conexión cacheada
         create_tables(conn)
         
         return conn
     except Exception as e:
-        # Si falla la conexión, mostramos el error y detenemos el script inmediatamente
         st.error(f"Error CRÍTICO al conectar con SQLite: {e}")
         st.stop()
         return None 
@@ -95,7 +92,6 @@ def execute_query(query, params=()):
         cursor.execute(query, params)
         conn.commit()
         st.cache_data.clear() # Limpia la caché para que load_data recargue con los nuevos datos
-        # CORRECCIÓN CLAVE: Eliminamos st.rerun() para evitar la inestabilidad en la conexión
         return True
     except Exception as e:
         st.error(f"Error al ejecutar la consulta: {e}")
@@ -180,7 +176,7 @@ with st.form("recorrido_form", clear_on_submit=True):
             
             if execute_query(query, params):
                 st.success("✅ Recorrido registrado con éxito.")
-                st.rerun() # Llamamos a rerun() aquí para refrescar la interfaz después del éxito
+                st.rerun() # Refresca la interfaz
         else:
             st.warning("⚠️ El kilometraje final debe ser mayor que el inicial.")
 
@@ -218,7 +214,7 @@ with st.form("repostaje_form", clear_on_submit=True):
             
             if execute_query(query, params):
                 st.success("✅ Repostaje registrado con éxito. El análisis de consumo se actualizará al recargar.")
-                st.rerun() # Llamamos a rerun() aquí para refrescar la interfaz después del éxito
+                st.rerun() # Refresca la interfaz
 
 st.divider()
 
@@ -337,7 +333,7 @@ if not df_recorridos.empty or not df_repostajes.empty:
                         if execute_query(query, params):
                             st.success("✅ ¡Registro de recorrido actualizado con éxito!")
                             st.session_state.editing = False
-                            st.rerun() # Refresca después de la edición
+                            st.rerun() 
                     else:
                         st.warning("⚠️ El kilometraje final debe ser mayor que el inicial para guardar.")
                 
@@ -346,7 +342,7 @@ if not df_recorridos.empty or not df_repostajes.empty:
                     if execute_query(query, (registro_id,)):
                         st.success("✅ ¡Registro de recorrido eliminado con éxito!")
                         st.session_state.editing = False
-                        st.rerun() # Refresca después de la eliminación
+                        st.rerun() 
 
             elif tipo == 'Repostaje':
                 # Widgets de edición
@@ -374,13 +370,13 @@ if not df_recorridos.empty or not df_repostajes.empty:
                         if execute_query(query, params):
                             st.success("✅ ¡Registro de repostaje actualizado con éxito!")
                             st.session_state.editing = False
-                            st.rerun() # Refresca después de la edición
+                            st.rerun() 
 
                 if eliminar_registro:
                     query = "DELETE FROM repostajes WHERE id = ?"
                     if execute_query(query, (registro_id,)):
                         st.success("✅ ¡Registro de repostaje eliminado con éxito!")
                         st.session_state.editing = False
-                        st.rerun() # Refresca después de la eliminación
+                        st.rerun() 
 else:
     st.info("No hay registros para editar o eliminar. ¡Añade uno primero!")
