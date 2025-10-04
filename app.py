@@ -2,13 +2,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import uuid
-# CAMBIO CRÍTICO 1: Usamos psycopg2 para PostgreSQL
-import psycopg2 
+import psycopg2 # Librería para conectar a PostgreSQL
 import time
 from datetime import datetime
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(layout="wide", page_title="Control de Combustible PostgreSQL")
+st.set_page_config(layout="wide", page_title="Control de Combustible PostgreSQL/Neon")
 
 # ----------------------------------------
 # 🚀 CONEXIÓN PERSISTENTE CON POSTGRESQL (NEON)
@@ -45,13 +44,14 @@ def create_tables(conn):
         )
     """)
     conn.commit()
-    cursor.close() # Es buena práctica cerrar el cursor
+    cursor.close()
 
-@st.cache_resource
+# SOLUCIÓN FINAL: ttl=3600 para reabrir la conexión cada hora y evitar que Neon la cierre por inactividad.
+@st.cache_resource(ttl=3600) 
 def get_db_connection():
     """Establece y mantiene la conexión a la base de datos PostgreSQL (Neon)."""
     try:
-        # CAMBIO CRÍTICO 2: Conexión usando las credenciales de st.secrets
+        # La conexión se crea usando las credenciales seguras de st.secrets
         conn = psycopg2.connect(**st.secrets["neon_db"]) 
         
         # Una vez conectado, aseguramos que las tablas existan
@@ -59,7 +59,7 @@ def get_db_connection():
         
         return conn
     except Exception as e:
-        # Si falla la conexión a Neon, mostramos un error claro.
+        # Muestra el error de conexión si las credenciales son incorrectas
         st.error(f"Error CRÍTICO al conectar con la base de datos Neon (PostgreSQL): {e}")
         st.stop()
         return None 
@@ -68,7 +68,6 @@ def get_db_connection():
 # 📦 FUNCIONES DE DATOS Y LÓGICA
 # ----------------------------------------
 
-# NOTA: La función load_data sigue usando pd.read_sql_query, que funciona con psycopg2/PostgreSQL.
 @st.cache_data(ttl=1)
 def load_data(table_name):
     """Carga todos los datos de una tabla a un DataFrame de Pandas."""
@@ -87,6 +86,7 @@ def load_data(table_name):
             
         return df
     except Exception as e:
+        # Este error ahora es menos probable gracias al ttl en la conexión
         st.error(f"Error al leer la tabla {table_name}: {e}")
         return pd.DataFrame()
 
@@ -94,16 +94,10 @@ def execute_query(query, params=()):
     """Ejecuta una consulta SQL y fuerza la recarga de datos."""
     try:
         cursor = conn.cursor()
-        # En PostgreSQL, usamos %s como placeholder, no ?
-        # Debemos reemplazar '?' por '%s' si tu query usa el estilo SQLite, 
-        # pero para mayor seguridad, asumiremos que usamos el estilo de psycopg2.
-        
-        # Si usaste ? en los formularios, mantenemos el estilo de SQLite, 
-        # aunque es menos estándar en psycopg2. Si falla, el cambio es: 
-        # cursor.execute(query.replace('?', '%s'), params)
+        # Nota: psycopg2 usa %s como placeholder, no ?
         cursor.execute(query, params) 
         conn.commit()
-        st.cache_data.clear() # Limpia la caché
+        st.cache_data.clear() # Limpia la caché de datos
         return True
     except Exception as e:
         st.error(f"Error al ejecutar la consulta: {e}")
@@ -136,6 +130,7 @@ def update_repostajes_analysis(df_repostajes):
             else:
                 df_repostajes.loc[i, "km_recorridos_acum"] = np.nan 
 
+    # Solución para KeyError: 'km_anterior'
     df_repostajes = df_repostajes.drop(columns=['km_anterior'], errors='ignore').round(2)
     return df_repostajes
 
@@ -143,7 +138,6 @@ def update_repostajes_analysis(df_repostajes):
 # 🎯 INICIALIZACIÓN DE LA APLICACIÓN
 # ----------------------------------------
 
-# La conexión ahora usa Neon y es persistente a través de reboots
 conn = get_db_connection() 
 
 # Carga inicial de datos
@@ -231,7 +225,7 @@ with st.form("repostaje_form", clear_on_submit=True):
 st.divider()
 
 # -----------------
-# SECCIÓN DE ANÁLISIS (SIN CAMBIOS)
+# SECCIÓN DE ANÁLISIS
 # -----------------
 st.header("📊 Resumen y Análisis")
 
@@ -277,7 +271,7 @@ else:
 st.divider()
 
 # -----------------
-# SECCIÓN DE EDICIÓN Y ELIMINACIÓN (SIN CAMBIOS ESTRUCTURALES)
+# SECCIÓN DE EDICIÓN Y ELIMINACIÓN
 # -----------------
 st.header("✏️ Editar o Eliminar Registros")
 
